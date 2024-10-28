@@ -14,19 +14,7 @@ const config = require('./config');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-/**
- * Extrae el número de teléfono del ID de WhatsApp.
- * @param {String} id - ID del mensaje (e.g., "34693064078@s.whatsapp.net" o "120363352554826007@g.us")
- * @returns {String} Número de teléfono (e.g., "34693064078")
- */
-function extractPhoneNumber(id) {
-    return id.split('@')[0];
-}
-
-/**
- * Obtiene el nombre del mes actual considerando el día de inicio.
- * @returns {String} Nombre del mes en español.
- */
+// Función para obtener el nombre del mes actual considerando el día de inicio
 function getCurrentMonth() {
     const now = moment();
     const startOfMonth = moment().date(config.MONTH_START_DAY).startOf('day');
@@ -96,15 +84,18 @@ client.on('message', async message => {
     const numberRegex = /^\d+$/;
 
     if (numberRegex.test(msg)) {
-        // Determinar el ID del remitente
+        // Determinar el Sender ID
         let senderId;
         if (message.isGroupMsg) {
-            senderId = message.author || message.from; // message.author debería ser el usuario
+            senderId = message.author; // Sender individual en grupo
+            if (!senderId) {
+                console.warn('Mensaje de grupo sin author, no se puede procesar.');
+                return;
+            }
         } else {
-            senderId = message.from;
+            senderId = message.from; // Sender en mensajes directos
         }
 
-        const phoneNumber = extractPhoneNumber(senderId);
         const score = parseInt(msg, 10);
         const displayName = message.pushname || 'Usuario'; // Obtener el nombre del usuario
 
@@ -120,7 +111,7 @@ client.on('message', async message => {
         try {
             // Obtener el mes actual considerando el día de inicio
             const currentMonth = getCurrentMonth();
-            let user = await User.findById(phoneNumber);
+            let user = await User.findById(senderId);
 
             if (user) {
                 // Actualizar el puntaje para el mes actual
@@ -135,14 +126,14 @@ client.on('message', async message => {
                 // Verificar si el totalScore alcanza un múltiplo de 50 y no ha sido felicitado para este múltiplo
                 if (user.totalScore >= user.lastCongratulated + 50 && user.totalScore % 50 === 0) {
                     // Enviar felicitación
-                    await client.sendMessage(message.from, `${user.displayName} acaba de alcanzar los ${user.totalScore} puntos!!!`);
+                    await client.sendMessage(senderId, `${user.displayName} acaba de alcanzar los ${user.totalScore} puntos!!!`);
                     // Actualizar lastCongratulated
                     user.lastCongratulated = user.totalScore;
                 }
             } else {
                 // Crear un nuevo usuario
                 user = new User({
-                    _id: phoneNumber,
+                    _id: senderId,
                     displayName: displayName,
                     totalScore: score,
                     monthlyScores: { [currentMonth]: score },
@@ -151,7 +142,7 @@ client.on('message', async message => {
 
                 // Si el score es múltiplo de 50 al crearse, enviar felicitación
                 if (score >= 50 && score % 50 === 0) {
-                    await client.sendMessage(message.from, `${user.displayName} acaba de alcanzar los ${score} puntos!!!`);
+                    await client.sendMessage(senderId, `${user.displayName} acaba de alcanzar los ${score} puntos!!!`);
                 }
             }
 
