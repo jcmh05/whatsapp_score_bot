@@ -6,10 +6,38 @@ const qrcode = require('qrcode-terminal');
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
+const moment = require('moment');
 const CustomAuthStrategy = require('./CustomAuthStrategy');
+const User = require('./models/User');
+const config = require('./config');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+/**
+ * Extrae el número de teléfono del ID de WhatsApp.
+ * @param {String} id - ID del mensaje (e.g., "34693064078@s.whatsapp.net" o "120363352554826007@g.us")
+ * @returns {String} Número de teléfono (e.g., "34693064078")
+ */
+function extractPhoneNumber(id) {
+    return id.split('@')[0];
+}
+
+/**
+ * Obtiene el nombre del mes actual considerando el día de inicio.
+ * @returns {String} Nombre del mes en español.
+ */
+function getCurrentMonth() {
+    const now = moment();
+    const startOfMonth = moment().date(config.MONTH_START_DAY).startOf('day');
+
+    if (now.isBefore(startOfMonth)) {
+        // Si la fecha actual es antes del día de inicio, considera el mes anterior
+        return now.subtract(1, 'months').format('MMMM');
+    } else {
+        return now.format('MMMM');
+    }
+}
 
 // Conectar a MongoDB
 const mongoURI = process.env.MONGODB_URI;
@@ -37,6 +65,18 @@ fs.readdirSync(commandsPath).forEach(file => {
     }
 });
 
+// Variable global para controlar si responder con "✅"
+let shouldReply = true;
+
+// Funciones para modificar la variable shouldReply
+function setShouldReply(value) {
+    shouldReply = value;
+}
+
+function getShouldReply() {
+    return shouldReply;
+}
+
 // Mostrar el QR en la consola si no está autenticado
 client.on('qr', (qr) => {
     qrcode.generate(qr, { small: true });
@@ -50,20 +90,98 @@ client.on('ready', () => {
 
 // Manejar mensajes entrantes
 client.on('message', async message => {
-    const msg = message.body.toLowerCase();
+    const msg = message.body.trim();
 
+    // Expresión regular para detectar mensajes que son solo números
+    const numberRegex = /^\d+$/;
+
+    if (numberRegex.test(msg)) {
+        // Determinar el ID del remitente
+        let senderId;
+        if (message.isGroupMsg) {
+            senderId = message.author || message.from; // message.author debería ser el usuario
+        } else {
+            senderId = message.from;
+        }
+
+        const phoneNumber = extractPhoneNumber(senderId);
+        const score = parseInt(msg, 10);
+        const displayName = message.pushname || 'Usuario'; // Obtener el nombre del usuario
+
+        // Validar que el puntaje sea un número positivo
+        if (isNaN(score) || score < 0) {
+            if (shouldReply) {
+                await message.reply('Por favor, envía un número válido positivo.');
+            }
+            return;
+        }
+
+        // Actualizar las estadísticas en MongoDB
+        try {
+            // Obtener el mes actual considerando el día de inicio
+            const currentMonth = getCurrentMonth();
+            let user = await User.findById(phoneNumber);
+
+            if (user) {
+                // Actualizar el puntaje para el mes actual
+                user.monthlyScores.set(currentMonth, score);
+                // Actualizar el puntaje total
+                user.totalScore = Array.from(user.monthlyScores.values()).reduce((a, b) => a + b, 0);
+                // Actualizar el displayName si ha cambiado
+                if (user.displayName !== displayName && displayName !== 'Usuario') {
+                    user.displayName = displayName;
+                }
+
+                // Verificar si el totalScore alcanza un múltiplo de 50 y no ha sido felicitado para este múltiplo
+                if (user.totalScore >= user.lastCongratulated + 50 && user.totalScore % 50 === 0) {
+                    // Enviar felicitación
+                    await client.sendMessage(message.from, `${user.displayName} acaba de alcanzar los ${user.totalScore} puntos!!!`);
+                    // Actualizar lastCongratulated
+                    user.lastCongratulated = user.totalScore;
+                }
+            } else {
+                // Crear un nuevo usuario
+                user = new User({
+                    _id: phoneNumber,
+                    displayName: displayName,
+                    totalScore: score,
+                    monthlyScores: { [currentMonth]: score },
+                    lastCongratulated: score >= 50 && score % 50 === 0 ? score : 0
+                });
+
+                // Si el score es múltiplo de 50 al crearse, enviar felicitación
+                if (score >= 50 && score % 50 === 0) {
+                    await client.sendMessage(message.from, `${user.displayName} acaba de alcanzar los ${score} puntos!!!`);
+                }
+            }
+
+            // Guardar los cambios
+            await user.save();
+
+            // Responder con un "✅" si está habilitado
+            if (shouldReply) {
+                await message.reply('✅');
+            }
+        } catch (error) {
+            console.error('Error al actualizar las estadísticas:', error);
+            if (shouldReply) {
+                await message.reply('Hubo un error al registrar tu puntaje. Por favor, intenta nuevamente.');
+            }
+        }
+    }
+
+    // Procesar comandos
     for (const command of commands) {
         if (command.match.test(msg)) {
             try {
-                await command.callback(client, message);
+                await command.callback(client, message, { setShouldReply, getShouldReply });
             } catch (error) {
                 console.error('Error al ejecutar el comando:', error);
+                await message.reply('Hubo un error al ejecutar el comando.');
             }
             break; // Ejecuta solo el primer comando que coincida
         }
     }
-
-    
 });
 
 // Manejar errores del cliente
