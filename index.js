@@ -76,7 +76,6 @@ client.on('ready', () => {
     console.log('Bot de WhatsApp está listo!');
 });
 
-// Manejar mensajes entrantes
 client.on('message', async message => {
     const msg = message.body.trim();
 
@@ -84,20 +83,27 @@ client.on('message', async message => {
     const numberRegex = /^\d+$/;
 
     if (numberRegex.test(msg)) {
-        // Determinar el Sender ID
         let senderId;
-        if (message.isGroupMsg) {
-            senderId = message.author; // Sender individual en grupo
+        let displayName;
+
+        if (message.from.includes('@g.us')) {
+            // Mensaje de grupo
+            senderId = message.author; // ID del remitente dentro del grupo
             if (!senderId) {
                 console.warn('Mensaje de grupo sin author, no se puede procesar.');
                 return;
             }
+            // Obtener el nombre del contacto
+            const contact = await client.getContactById(senderId);
+            displayName = contact.pushname || contact.verifiedName || contact.name || 'Usuario';
         } else {
-            senderId = message.from; // Sender en mensajes directos
+            // Mensaje individual
+            senderId = message.from; // ID del remitente
+            const contact = await message.getContact();
+            displayName = contact.pushname || contact.verifiedName || contact.name || 'Usuario';
         }
 
         const score = parseInt(msg, 10);
-        const displayName = message.pushname || 'Usuario'; // Obtener el nombre del usuario
 
         // Validar que el puntaje sea un número positivo
         if (isNaN(score) || score < 0) {
@@ -126,7 +132,7 @@ client.on('message', async message => {
                 // Verificar si el totalScore alcanza un múltiplo de 50 y no ha sido felicitado para este múltiplo
                 if (user.totalScore >= user.lastCongratulated + 50 && user.totalScore % 50 === 0) {
                     // Enviar felicitación
-                    await client.sendMessage(senderId, `${user.displayName} acaba de alcanzar los ${user.totalScore} puntos!!!`);
+                    await client.sendMessage(message.from, `${user.displayName} acaba de alcanzar los ${user.totalScore} puntos!!!`);
                     // Actualizar lastCongratulated
                     user.lastCongratulated = user.totalScore;
                 }
@@ -142,7 +148,7 @@ client.on('message', async message => {
 
                 // Si el score es múltiplo de 50 al crearse, enviar felicitación
                 if (score >= 50 && score % 50 === 0) {
-                    await client.sendMessage(senderId, `${user.displayName} acaba de alcanzar los ${score} puntos!!!`);
+                    await client.sendMessage(message.from, `${user.displayName} acaba de alcanzar los ${score} puntos!!!`);
                 }
             }
 
