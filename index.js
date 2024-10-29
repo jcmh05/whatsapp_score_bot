@@ -157,7 +157,7 @@ client.on('message', async message => {
 
             // Responder con un "✅" si está habilitado
             if (shouldReply) {
-                await message.reply('✅');
+                await message.react('✅');
             }
         } catch (error) {
             console.error('Error al actualizar las estadísticas:', error);
