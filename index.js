@@ -79,8 +79,103 @@ client.on('ready', () => {
 client.on('message', async message => {
     const msg = message.body.trim();
 
+    // Expresiones regulares para "+1" y "-1"
+    const numberIncrementRegex = /^\+1$/;
+    const numberDecrementRegex = /^-1$/;
+
     // Expresión regular para detectar mensajes que son solo números
     const numberRegex = /^\d+$/;
+
+    if (numberIncrementRegex.test(msg) || numberDecrementRegex.test(msg)) {
+        let senderId;
+        let displayName;
+
+        if (message.from.includes('@g.us')) {
+            // Mensaje de grupo
+            senderId = message.author;
+            if (!senderId) {
+                console.warn('Mensaje de grupo sin author, no se puede procesar.');
+                return;
+            }
+            // Obtener el nombre del contacto
+            const contact = await client.getContactById(senderId);
+            displayName = contact.pushname || contact.verifiedName || contact.name || 'Usuario';
+        } else {
+            // Mensaje individual
+            senderId = message.from;
+            const contact = await message.getContact();
+            displayName = contact.pushname || contact.verifiedName || contact.name || 'Usuario';
+        }
+
+        // Obtener el mes actual considerando el día de inicio
+        const currentMonth = getCurrentMonth();
+
+        try {
+            let user = await User.findById(senderId);
+
+            if (!user) {
+                // Crear un nuevo usuario si no existe
+                user = new User({
+                    _id: senderId,
+                    displayName: displayName,
+                    totalScore: 0,
+                    monthlyScores: {},
+                    lastCongratulated: 0
+                });
+            } else {
+                // Actualizar el displayName si ha cambiado
+                if (user.displayName !== displayName && displayName !== 'Usuario') {
+                    user.displayName = displayName;
+                }
+            }
+
+            // Obtener el puntaje actual del mes
+            let currentMonthScore = user.monthlyScores.get(currentMonth) || 0;
+
+            if (numberIncrementRegex.test(msg)) {
+                // Incrementar el puntaje en 1
+                currentMonthScore += 1;
+            } else if (numberDecrementRegex.test(msg)) {
+                // Decrementar el puntaje en 1 si es mayor que 0
+                if (currentMonthScore > 0) {
+                    currentMonthScore -= 1;
+                } else {
+                    if (shouldReply) {
+                        await message.reply('Ya tienes 0 puntos en este mes, no puedes reducir más.');
+                    }
+                    return;
+                }
+            }
+
+            // Actualizar el puntaje del mes actual
+            user.monthlyScores.set(currentMonth, currentMonthScore);
+
+            // Recalcular el puntaje total
+            user.totalScore = Array.from(user.monthlyScores.values()).reduce((a, b) => a + b, 0);
+
+            // Verificar si el totalScore alcanza un múltiplo de 50 y no ha sido felicitado para este múltiplo
+            if (user.totalScore >= user.lastCongratulated + 50 && user.totalScore % 50 === 0) {
+                // Enviar felicitación
+                await client.sendMessage(message.from, `${user.displayName} acaba de alcanzar los ${user.totalScore} puntos!!!`);
+                // Actualizar lastCongratulated
+                user.lastCongratulated = user.totalScore;
+            }
+
+            // Guardar los cambios
+            await user.save();
+
+            // Responder con el puntaje actual
+            if (shouldReply) {
+                await message.reply(`${currentMonthScore}✅`);
+            }
+        } catch (error) {
+            console.error('Error al actualizar el puntaje:', error);
+            if (shouldReply) {
+                await message.reply('Hubo un error al actualizar tu puntaje. Por favor, intenta nuevamente.');
+            }
+        }
+        return; // Salir después de manejar "+1" o "-1"
+    }
 
     if (numberRegex.test(msg)) {
         let senderId;

@@ -15,7 +15,18 @@ module.exports = {
             let reply = '*Top Global de Usuarios:*\n';
             topUsers.forEach((user, index) => {
                 const name = user.displayName !== 'Usuario' ? user.displayName : user._id;
-                reply += `${index + 1}. ${name} - Total: ${user.totalScore}\n`;
+                let medal = '';
+
+                // Asignar emoji según la posición
+                if (index === 0) {
+                    medal = '🥇 ';
+                } else if (index === 1) {
+                    medal = '🥈 ';
+                } else if (index === 2) {
+                    medal = '🥉 ';
+                }
+
+                reply += `${index + 1}. ${medal}${name} - Total: ${user.totalScore}\n`;
             });
 
             await message.reply(reply);

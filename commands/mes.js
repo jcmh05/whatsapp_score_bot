@@ -34,11 +34,11 @@ module.exports = {
                 return;
             }
 
-            let reply = `*Top de ${currentMonth}:*\n`;
+            let reply = `*📅Top de ${currentMonth}:*\n`;
             topUsers.forEach((user, index) => {
                 const score = user.monthlyScores.get(currentMonth);
                 const name = user.displayName !== 'Usuario' ? user.displayName : user._id;
-                reply += `${index + 1}. ${name} - ${currentMonth}: ${score}\n`;
+                reply += `${index + 1}. ${name} : ${score}\n`;
             });
 
             await message.reply(reply);
