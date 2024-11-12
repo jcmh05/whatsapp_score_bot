@@ -1,6 +1,4 @@
 const User = require('../models/User');
-const Chart = require('chart.js');
-const { createCanvas } = require('canvas');
 const path = require('path');
 
 module.exports = {
