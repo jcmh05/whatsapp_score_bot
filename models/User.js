@@ -9,6 +9,17 @@ const userSchema = new mongoose.Schema({
         type: Map,
         of: Number,
         default: {}
+    },
+    hours: {
+        type: Map,
+        of: Number,
+        default: () => {
+            const hoursMap = {};
+            for (let i = 0; i < 24; i++) {
+                hoursMap[`h${i}`] = 0;
+            }
+            return hoursMap;
+        }
     }
 });
 

@@ -6,7 +6,7 @@ const qrcode = require('qrcode-terminal');
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
-const moment = require('moment');
+const moment = require('moment-timezone'); // Importar moment-timezone
 const CustomAuthStrategy = require('./CustomAuthStrategy');
 const User = require('./models/User');
 const config = require('./config');
@@ -16,8 +16,8 @@ const PORT = process.env.PORT || 3000;
 
 // Función para obtener el nombre del mes actual considerando el día de inicio
 function getCurrentMonth() {
-    const now = moment();
-    const startOfMonth = moment().date(config.MONTH_START_DAY).startOf('day');
+    const now = moment().tz(config.TIMEZONE); // Usar la zona horaria de España
+    const startOfMonth = moment().tz(config.TIMEZONE).date(config.MONTH_START_DAY).startOf('day');
 
     if (now.isBefore(startOfMonth)) {
         // Si la fecha actual es antes del día de inicio, considera el mes anterior
@@ -110,6 +110,10 @@ client.on('message', async message => {
         // Obtener el mes actual considerando el día de inicio
         const currentMonth = getCurrentMonth();
 
+        // Obtener la hora actual en España Peninsular
+        const currentHour = moment().tz(config.TIMEZONE).hour(); // Devuelve un número entre 0 y 23
+        const hourKey = `h${currentHour}`;
+
         try {
             let user = await User.findById(senderId);
 
@@ -120,7 +124,8 @@ client.on('message', async message => {
                     displayName: displayName,
                     totalScore: 0,
                     monthlyScores: {},
-                    lastCongratulated: 0
+                    lastCongratulated: 0,
+                    hours: {} // Se inicializará automáticamente con el default
                 });
             } else {
                 // Actualizar el displayName si ha cambiado
@@ -135,10 +140,14 @@ client.on('message', async message => {
             if (numberIncrementRegex.test(msg)) {
                 // Incrementar el puntaje en 1
                 currentMonthScore += 1;
+                // Incrementar el contador de la hora correspondiente
+                user.hours.set(hourKey, (user.hours.get(hourKey) || 0) + 1);
             } else if (numberDecrementRegex.test(msg)) {
                 // Decrementar el puntaje en 1 si es mayor que 0
                 if (currentMonthScore > 0) {
                     currentMonthScore -= 1;
+                    // Decrementar el contador de la hora correspondiente, asegurando que no sea negativo
+                    user.hours.set(hourKey, Math.max((user.hours.get(hourKey) || 0) - 1, 0));
                 } else {
                     if (shouldReply) {
                         await message.reply('Ya tienes 0 puntos en este mes, no puedes reducir más.');
@@ -224,13 +233,6 @@ client.on('message', async message => {
                     user.displayName = displayName;
                 }
 
-                // Verificar si el totalScore alcanza un múltiplo de 50 y no ha sido felicitado para este múltiplo
-                if (user.totalScore >= user.lastCongratulated + 50 && user.totalScore % 50 === 0) {
-                    // Enviar felicitación
-                    await client.sendMessage(message.from, `${user.displayName} acaba de alcanzar los ${user.totalScore} puntos!!!`);
-                    // Actualizar lastCongratulated
-                    user.lastCongratulated = user.totalScore;
-                }
             } else {
                 // Crear un nuevo usuario
                 user = new User({
@@ -238,13 +240,22 @@ client.on('message', async message => {
                     displayName: displayName,
                     totalScore: score,
                     monthlyScores: { [currentMonth]: score },
-                    lastCongratulated: score >= 50 && score % 50 === 0 ? score : 0
+                    lastCongratulated: score >= 50 && score % 50 === 0 ? score : 0,
+                    hours: {} // Se inicializará automáticamente con el default
                 });
 
                 // Si el score es múltiplo de 50 al crearse, enviar felicitación
                 if (score >= 50 && score % 50 === 0) {
                     await client.sendMessage(message.from, `${user.displayName} acaba de alcanzar los ${score} puntos!!!`);
                 }
+            }
+
+            // Verificar si el totalScore alcanza un múltiplo de 50 y no ha sido felicitado para este múltiplo
+            if (user.totalScore >= user.lastCongratulated + 50 && user.totalScore % 50 === 0) {
+                // Enviar felicitación
+                await client.sendMessage(message.from, `${user.displayName} acaba de alcanzar los ${user.totalScore} puntos!!!`);
+                // Actualizar lastCongratulated
+                user.lastCongratulated = user.totalScore;
             }
 
             // Guardar los cambios
