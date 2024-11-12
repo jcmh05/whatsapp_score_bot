@@ -16,6 +16,7 @@ module.exports = {
     callback: async (client, message, context) => {
         try {
             let senderId;
+            let displayName;
 
             if (message.from.includes('@g.us')) {
                 // Mensaje de grupo
@@ -24,9 +25,14 @@ module.exports = {
                     console.warn('Mensaje de grupo sin author, no se puede procesar.');
                     return;
                 }
+                // Obtener el nombre del contacto
+                const contact = await client.getContactById(senderId);
+                displayName = contact.pushname || contact.verifiedName || contact.name || 'Usuario';
             } else {
                 // Mensaje individual
                 senderId = message.from; // ID del remitente
+                const contact = await message.getContact();
+                displayName = contact.pushname || contact.verifiedName || contact.name || 'Usuario';
             }
 
             let user = await User.findById(senderId);
@@ -37,7 +43,7 @@ module.exports = {
             }
 
             const totalScore = user.totalScore || 0;
-            const monthlyScores = user.monthlyScores || {};
+            const monthlyScores = user.monthlyScores || new Map();
 
             // Mapear nombres de meses en español a números de mes (0-11)
             const monthNameToNumber = {
@@ -117,27 +123,37 @@ module.exports = {
             // Preparar promedios por mes
             let perMonthAverages = '';
 
+            // Obtener los nombres de los meses que tienen puntuaciones
+            const userMonths = Array.from(monthlyScores.keys()).filter(month => monthOrder.includes(month.toLowerCase()));
+
             // Ordenar los meses según el orden calendario
-            const userMonths = Object.keys(monthlyScores).sort((a, b) => monthNameToNumber[a] - monthNameToNumber[b]);
+            userMonths.sort((a, b) => monthNameToNumber[a.toLowerCase()] - monthNameToNumber[b.toLowerCase()]);
 
             userMonths.forEach(monthName => {
-                const score = monthlyScores[monthName];
-                const days = monthDays[monthName] || 0;
+                const score = monthlyScores.get(monthName);
+                const normalizedMonthName = monthName.toLowerCase();
+
+                const days = monthDays[normalizedMonthName] || 0;
 
                 if (days > 0) {
                     let average = score / days;
-                    perMonthAverages += `- ${capitalizeFirstLetter(monthName)}: ${average.toFixed(2)} puntos/día\n`;
+                    perMonthAverages += `- ${capitalizeFirstLetter(normalizedMonthName)}: ${average.toFixed(2)} puntos/día\n`;
                 } else {
+                    perMonthAverages += `- ${capitalizeFirstLetter(normalizedMonthName)}: No hay suficientes datos para calcular el promedio.\n`;
+                }
+            });
+
+            // Agregar los meses que no tienen puntuaciones
+            monthOrder.forEach(monthName => {
+                if (!userMonths.includes(monthName)) {
                     perMonthAverages += `- ${capitalizeFirstLetter(monthName)}: No hay suficientes datos para calcular el promedio.\n`;
                 }
             });
 
             // Preparar el mensaje de respuesta
-            const displayName = user.displayName || 'Usuario';
-
-            let reply = `*${displayName}, tu promedio global es ${globalAverage.toFixed(2)} puntos por día.*\n\n`;
-            reply += `*Tus promedios por mes son:*\n`;
-            reply += perMonthAverages;
+            const reply = `*${displayName}, tu promedio global es ${globalAverage.toFixed(2)} puntos por día.*\n\n` +
+                          `*Tus promedios por mes son:*\n` +
+                          `${perMonthAverages}`;
 
             await message.reply(reply);
 
