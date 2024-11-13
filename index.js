@@ -76,6 +76,7 @@ client.on('ready', () => {
     console.log('Bot de WhatsApp está listo!');
 });
 
+// Manejar eventos de mensajes
 client.on('message', async message => {
     const msg = message.body.trim();
 
@@ -86,7 +87,8 @@ client.on('message', async message => {
     // Expresión regular para detectar mensajes que son solo números
     const numberRegex = /^\d+$/;
 
-    if (numberIncrementRegex.test(msg) || numberDecrementRegex.test(msg)) {
+    // Función para procesar incrementos/decrementos
+    const processScoreChange = async () => {
         let senderId;
         let displayName;
 
@@ -183,10 +185,10 @@ client.on('message', async message => {
                 await message.reply('Hubo un error al actualizar tu puntaje. Por favor, intenta nuevamente.');
             }
         }
-        return; // Salir después de manejar "+1" o "-1"
-    }
+    };
 
-    if (numberRegex.test(msg)) {
+    // Función para procesar mensajes numéricos
+    const processNumericMessage = async () => {
         let senderId;
         let displayName;
 
@@ -271,16 +273,31 @@ client.on('message', async message => {
                 await message.reply('Hubo un error al registrar tu puntaje. Por favor, intenta nuevamente.');
             }
         }
+    };
+
+    // Procesar incrementos/decrementos
+    if (numberIncrementRegex.test(msg) || numberDecrementRegex.test(msg)) {
+        processScoreChange();
+        return; // Salir después de manejar "+1" o "-1"
+    }
+
+    // Procesar mensajes numéricos
+    if (numberRegex.test(msg)) {
+        processNumericMessage();
+        return;
     }
 
     // Procesar comandos
     for (const command of commands) {
         if (command.match.test(msg)) {
             try {
-                await command.callback(client, message, { setShouldReply, getShouldReply });
+                // Ejecutar el comando sin bloquear el ciclo de eventos
+                command.callback(client, message, { setShouldReply, getShouldReply });
             } catch (error) {
                 console.error('Error al ejecutar el comando:', error);
-                await message.reply('Hubo un error al ejecutar el comando.');
+                if (shouldReply) {
+                    message.reply('Hubo un error al ejecutar el comando.');
+                }
             }
             break; // Ejecuta solo el primer comando que coincida
         }
