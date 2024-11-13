@@ -6,5 +6,6 @@ moment.locale('es');
 
 module.exports = {
     MONTH_START_DAY: 6,
-    TIMEZONE: 'Europe/Madrid' // Zona horaria para España Peninsular
+    TIMEZONE: 'Europe/Madrid', // Zona horaria para España Peninsular
+    DEFAULT_CITY: 'Jaen'
 };
