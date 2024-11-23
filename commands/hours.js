@@ -32,14 +32,27 @@ module.exports = {
             }
 
             const hoursMap = user.hours || new Map();
-            let reply = `*📊 Registro de Horas para ${displayName}:*\n`;
+            const counts = Array.from({ length: 24 }, (_, i) => hoursMap.get(`h${i}`) || 0);
+            const maxCount = Math.max(...counts);
+
+            let scale = 1;
+            if (maxCount > 8) {
+                scale = 8 / maxCount;
+            }
+
+            let reply = `*🕒 Registro de Horas para ${displayName}:*\n`;
 
             for (let i = 0; i < 24; i++) {
                 const hourKey = `h${i}`;
                 const count = hoursMap.get(hourKey) || 0;
-                // Crear una barra con emojis (ejemplo: cada punto representa 1)
-                const bar = '⬛'.repeat(count) || '⬜'; // Usa '⬛' para cada punto, '⬜' si no hay puntos
-                reply += `🕒 ${i.toString().padStart(2, '0')}:00 | ${bar} (${count})\n`;
+                let numEmojis = Math.ceil(count * scale);
+
+                if (maxCount > 8 && numEmojis > 8) {
+                    numEmojis = 8;
+                }
+
+                const bar = numEmojis > 0 ? '⬛'.repeat(numEmojis) : '⬜';
+                reply += `${i.toString().padStart(2, '0')}:00 | ${bar} (${count})\n`;
             }
 
             await message.reply(reply);
