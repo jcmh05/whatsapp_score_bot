@@ -24,10 +24,8 @@ module.exports = {
         try {
             const currentMonth = getCurrentMonth();
 
-            // Obtener los top 10 usuarios por el puntaje del mes actual descendente
             const topUsers = await User.find({ [`monthlyScores.${currentMonth}`]: { $exists: true } })
-                .sort({ [`monthlyScores.${currentMonth}`]: -1 })
-                .limit(10);
+                .sort({ [`monthlyScores.${currentMonth}`]: -1 });
 
             if (topUsers.length === 0) {
                 await message.reply(`No hay datos disponibles para mostrar el top de ${currentMonth}.`);

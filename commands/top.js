@@ -4,8 +4,7 @@ module.exports = {
     match: /^\/top$/i,
     callback: async (client, message, context) => {
         try {
-            // Obtener los top 10 usuarios por totalScore descendente
-            const topUsers = await User.find().sort({ totalScore: -1 }).limit(10);
+            const topUsers = await User.find().sort({ totalScore: -1 });
 
             if (topUsers.length === 0) {
                 await message.reply('No hay datos disponibles para mostrar el top.');
@@ -17,7 +16,6 @@ module.exports = {
                 const name = user.displayName !== 'Usuario' ? user.displayName : user._id;
                 let medal = '';
 
-                // Asignar emoji según la posición
                 if (index === 0) {
                     medal = '🥇 ';
                 } else if (index === 1) {
