@@ -2,6 +2,8 @@ const User = require('../models/User');
 const moment = require('moment-timezone');
 const config = require('../config');
 
+const REWIND_START_DATE = moment.tz('2024-12-21 20:30', 'YYYY-MM-DD HH:mm', config.TIMEZONE);
+
 /**
  * Obtiene la posición del usuario en el top global.
  * @param {String} userId - ID del usuario.
@@ -68,24 +70,19 @@ module.exports = {
     match: /^\/rewind$/i,
     callback: async (client, message, context) => {
         try {
-            const now = moment().tz(config.TIMEZONE);
-            const currentYear = now.year();
+          const now = moment().tz(config.TIMEZONE);
 
-            // Definir el período permitido: últimas 14 días del año
-            const startRewind = moment.tz(`${currentYear}-12-18`, 'YYYY-MM-DD', config.TIMEZONE);
-            const endRewind = moment.tz(`${currentYear}-12-31`, 'YYYY-MM-DD', config.TIMEZONE).endOf('day');
+          if (now.isBefore(REWIND_START_DATE)) {
+              // Calcular tiempo restante
+              const duration = moment.duration(REWIND_START_DATE.diff(now));
+              const days = Math.floor(duration.asDays());
+              const hours = duration.hours();
+              const minutes = duration.minutes();
 
-            if (!now.isBetween(startRewind, endRewind, null, '[]')) {
-                // Calcular los días restantes hasta el inicio del período permitido
-                const daysRemaining = startRewind.startOf('day').diff(now.startOf('day'), 'days');
-                const plural = daysRemaining === 1 ? '' : 's';
-                const replyMessage = `Este comando solo puede usarse durante las dos últimas semanas del año. Faltan ${daysRemaining} día${plural}.`;
-                await message.reply(replyMessage);
-                if (config.SHOW_LOGS) {
-                    console.log(`Comando /rewind ejecutado antes del período permitido. Faltan ${daysRemaining} días.`);
-                }
-                return;
-            }
+              const timeLeftMessage = `El comando /rewind estará disponible en ${days} día${days !== 1 ? 's' : ''}, ${hours} hora${hours !== 1 ? 's' : ''} y ${minutes} minuto${minutes !== 1 ? 's' : ''}.`;
+              await message.reply(timeLeftMessage);
+              return;
+          }
 
             // Identificar al usuario que envió el mensaje
             let senderId;
@@ -125,6 +122,8 @@ module.exports = {
                 await message.reply('No tienes datos registrados aún.');
                 return;
             }
+
+            const currentYear = now.year();
 
             // Obtener la posición del usuario en el top global
             const rank = await getUserRank(senderId);
@@ -187,11 +186,13 @@ module.exports = {
             const meanScore = scoresArray.reduce((acc, val) => acc + val, 0) / scoresArray.length;
             const variance = scoresArray.reduce((acc, val) => acc + Math.pow(val - meanScore, 2), 0) / scoresArray.length;
             const stdDeviation = Math.sqrt(variance).toFixed(2);
-            const stabilityMessage = stdDeviation < 10
-                ? 'has mantenido una consistencia notable en tus puntuaciones.'
-                : stdDeviation < 20
-                    ? 'tus puntuaciones han mostrado una buena estabilidad a lo largo del año.'
-                    : 'tus puntuaciones han variado significativamente a lo largo del año.';
+            let stabilityMessage = stdDeviation < 5
+                ? 'has mantenido una consistencia notable, '
+                : stdDeviation < 10
+                    ? ' han mostrado una buena estabilidad a lo largo del año, '
+                    : ' han variado significativamente a lo largo del año, ';
+
+            stabilityMessage += ` contando con ${stdDeviation} puntos de variación entre los distintos meses`
 
             // Estadísticas por horario
             const hoursMap = user.hours || new Map();
