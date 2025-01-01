@@ -5,7 +5,7 @@ const moment = require('moment-timezone');
 const config = require('../config');
 
 // Fecha y hora específicas para habilitar el comando
-const REWINDCHART_START_DATE =  moment.tz('2024-12-21 20:30', 'YYYY-MM-DD HH:mm', config.TIMEZONE);
+const REWINDCHART_START_DATE =  moment.tz('2025-12-21 20:30', 'YYYY-MM-DD HH:mm', config.TIMEZONE);
 
 module.exports = {
     match: /^\/rewindchart$/i,

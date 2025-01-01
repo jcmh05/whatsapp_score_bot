@@ -116,6 +116,9 @@ client.on('message', async message => {
         const currentHour = moment().tz(config.TIMEZONE).hour(); // Devuelve un número entre 0 y 23
         const hourKey = `h${currentHour}`;
 
+        // Obtener el día de la semana actual
+        const currentDay = moment().tz(config.TIMEZONE).format('dddd').toLowerCase();
+
         try {
             let user = await User.findById(senderId);
 
@@ -127,7 +130,8 @@ client.on('message', async message => {
                     totalScore: 0,
                     monthlyScores: {},
                     lastCongratulated: 0,
-                    hours: {} // Se inicializará automáticamente con el default
+                    hours: {},
+                    week: {}
                 });
             } else {
                 // Actualizar el displayName si ha cambiado
@@ -142,14 +146,16 @@ client.on('message', async message => {
             if (numberIncrementRegex.test(msg)) {
                 // Incrementar el puntaje en 1
                 currentMonthScore += 1;
-                // Incrementar el contador de la hora correspondiente
+                // Incrementar el contador correspondiente
                 user.hours.set(hourKey, (user.hours.get(hourKey) || 0) + 1);
+                user.week.set(currentDay, (user.week.get(currentDay) || 0) + 1);
             } else if (numberDecrementRegex.test(msg)) {
                 // Decrementar el puntaje en 1 si es mayor que 0
                 if (currentMonthScore > 0) {
                     currentMonthScore -= 1;
-                    // Decrementar el contador de la hora correspondiente, asegurando que no sea negativo
+                    // Decrementar el contador correspondiente, asegurando que no sea negativo
                     user.hours.set(hourKey, Math.max((user.hours.get(hourKey) || 0) - 1, 0));
+                    user.week.set(currentDay, Math.max((user.week.get(currentDay) || 0) - 1, 0));
                 } else {
                     if (shouldReply) {
                         await message.reply('Ya tienes 0 puntos en este mes, no puedes reducir más.');
@@ -243,7 +249,8 @@ client.on('message', async message => {
                     totalScore: score,
                     monthlyScores: { [currentMonth]: score },
                     lastCongratulated: score >= 50 && score % 50 === 0 ? score : 0,
-                    hours: {} // Se inicializará automáticamente con el default
+                    hours: {},
+                    week: {}
                 });
 
                 // Si el score es múltiplo de 50 al crearse, enviar felicitación

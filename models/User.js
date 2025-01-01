@@ -20,6 +20,21 @@ const userSchema = new mongoose.Schema({
             }
             return hoursMap;
         }
+    },
+    week: {
+        type: Map,
+        of: Number,
+        default: () => {
+            return {
+                lunes: 0,
+                martes: 0,
+                miercoles: 0,
+                jueves: 0,
+                viernes: 0,
+                sabado: 0,
+                domingo: 0
+            };
+        }
     }
 });
 
