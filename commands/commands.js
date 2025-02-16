@@ -17,6 +17,8 @@ module.exports = {
             '- /fluky:op1,op2,op3... - Selecciona una opción aleatoriamente',
             '- /rewind - Devuelve estadísticas de una persona a final de año',
             '- /rewindchart - Devuelve una gráfica resumen de una persona a final de año',
+            '- /week - Muesta los puntos sumados por día de la semana',
+            '- /weekchart - Muestra una gráfica de los puntos sumados por día de la semana',
             '- /commands - Muestra esta lista de comandos.'
         ];
 
