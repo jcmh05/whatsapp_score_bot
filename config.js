@@ -8,5 +8,5 @@ module.exports = {
     MONTH_START_DAY: 1,
     TIMEZONE: 'Europe/Madrid', // Zona horaria para España Peninsular
     DEFAULT_CITY: 'Jaen',
-    SHOW_LOGS: true
+    SHOW_LOGS: false
 };
