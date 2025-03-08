@@ -19,6 +19,8 @@ module.exports = {
             '- /rewindchart - Devuelve una gráfica resumen de una persona a final de año',
             '- /week - Muesta los puntos sumados por día de la semana',
             '- /weekchart - Muestra una gráfica de los puntos sumados por día de la semana',
+            '- /year:YYYY - Muestra el top de usuarios del año YYYY',
+            '- /progress - Muestra el progreso de los puntos del año actual',
             '- /commands - Muestra esta lista de comandos.'
         ];
 
