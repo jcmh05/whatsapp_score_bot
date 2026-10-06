@@ -1,3 +1,4 @@
+const { getContactInfo } = require('../src/contact');
 const User = require('../models/User');
 const moment = require('moment');
 const config = require('../config');
@@ -15,25 +16,7 @@ module.exports = {
     match: /^\/average$/i,
     callback: async (client, message, context) => {
         try {
-            let senderId;
-            let displayName;
-
-            if (message.from.includes('@g.us')) {
-                // Mensaje de grupo
-                senderId = message.author; // ID del remitente dentro del grupo
-                if (!senderId) {
-                    console.warn('Mensaje de grupo sin author, no se puede procesar.');
-                    return;
-                }
-                // Obtener el nombre del contacto
-                const contact = await client.getContactById(senderId);
-                displayName = contact.pushname || contact.verifiedName || contact.name || 'Usuario';
-            } else {
-                // Mensaje individual
-                senderId = message.from; // ID del remitente
-                const contact = await message.getContact();
-                displayName = contact.pushname || contact.verifiedName || contact.name || 'Usuario';
-            }
+            const { id: senderId, name: displayName } = await getContactInfo(client, message);
 
             let user = await User.findById(senderId);
 

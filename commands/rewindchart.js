@@ -1,3 +1,4 @@
+const { getContactInfo } = require('../src/contact');
 const User = require('../models/User');
 const axios = require('axios');
 const { MessageMedia } = require('whatsapp-web.js');
@@ -26,24 +27,7 @@ module.exports = {
             }
 
             // Identificar al usuario que envió el mensaje
-            let senderId;
-            let displayName;
-
-            if (message.from.includes('@g.us')) {
-                // Mensaje de grupo
-                senderId = message.author;
-                if (!senderId) {
-                    await message.reply('No se pudo identificar al autor del mensaje.');
-                    return;
-                }
-                const contact = await client.getContactById(senderId);
-                displayName = contact.pushname || contact.verifiedName || contact.name || 'Usuario';
-            } else {
-                // Mensaje individual
-                senderId = message.from;
-                const contact = await message.getContact();
-                displayName = contact.pushname || contact.verifiedName || contact.name || 'Usuario';
-            }
+            const { id: senderId, name: displayName } = await getContactInfo(client, message);
 
             // Buscar el usuario en la base de datos
             const user = await User.findById(senderId);
@@ -101,7 +85,7 @@ module.exports = {
             };
 
             // Generar la URL de QuickChart
-            const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+            const chartUrl = `https://quickchart.io/chart?version=4&format=png&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 
             // Descargar la imagen del gráfico
             const response = await axios.get(chartUrl, { responseType: 'arraybuffer' });

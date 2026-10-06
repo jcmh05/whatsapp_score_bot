@@ -1,3 +1,4 @@
+const { getContactInfo } = require('../src/contact');
 const Fact = require('../models/Fact');
 const config = require('../config');
 
@@ -11,7 +12,7 @@ module.exports = {
     match: /^\/addfact:(.+)$/i,
     callback: async (client, message) => {
         try {
-            const senderId = message.from.includes('@g.us') ? message.author : message.from;
+            const { id: senderId } = await getContactInfo(client, message);
 
             if (!senderId) {
                 log('No se pudo determinar el senderId del mensaje.');

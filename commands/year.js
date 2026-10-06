@@ -34,7 +34,7 @@ module.exports = {
             }
 
             // Crear un modelo dinámico para la colección del año
-            UserYearModel = mongoose.model(
+            UserYearModel = mongoose.models[`UserYear${year}`] || mongoose.model(
                 `UserYear${year}`,
                 new mongoose.Schema({}, { strict: false }),
                 collectionName
@@ -161,8 +161,8 @@ module.exports = {
             };
 
             // Generar las URLs de las gráficas usando QuickChart
-            const lineChartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(lineChartConfig))}`;
-            const barChartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(barChartConfig))}`;
+            const lineChartUrl = `https://quickchart.io/chart?version=4&format=png&c=${encodeURIComponent(JSON.stringify(lineChartConfig))}`;
+            const barChartUrl = `https://quickchart.io/chart?version=4&format=png&c=${encodeURIComponent(JSON.stringify(barChartConfig))}`;
 
             // Descargar las imágenes de las gráficas
             const lineChartResponse = await axios.get(lineChartUrl, { responseType: 'arraybuffer' });

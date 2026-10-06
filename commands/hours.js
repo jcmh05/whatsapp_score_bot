@@ -1,28 +1,11 @@
+const { getContactInfo } = require('../src/contact');
 const User = require('../models/User');
 
 module.exports = {
     match: /^\/hours$/i,
     callback: async (client, message, context) => {
         try {
-            let senderId;
-            let displayName;
-
-            if (message.from.includes('@g.us')) {
-                // Mensaje de grupo
-                senderId = message.author;
-                if (!senderId) {
-                    await message.reply('No se pudo identificar al autor del mensaje.');
-                    return;
-                }
-                // Obtener el nombre del contacto
-                const contact = await client.getContactById(senderId);
-                displayName = contact.pushname || contact.verifiedName || contact.name || 'Usuario';
-            } else {
-                // Mensaje individual
-                senderId = message.from;
-                const contact = await message.getContact();
-                displayName = contact.pushname || contact.verifiedName || contact.name || 'Usuario';
-            }
+            const { id: senderId, name: displayName } = await getContactInfo(client, message);
 
             const user = await User.findById(senderId);
 

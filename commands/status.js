@@ -2,7 +2,10 @@
 const os = require('os');
 const moment = require('moment');
 const mongoose = require('mongoose');
-const { exec } = require('child_process');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
+const execute = promisify(execFile);
+const path = require('node:path');
 const config = require('../config');
 
 // Función de registro condicional
@@ -18,15 +21,20 @@ module.exports = {
         try {
             // Obtener información básica sobre el bot y el entorno de ejecución
             const uptime = moment.duration(process.uptime(), 'seconds').humanize();
+            let npmVersion = 'Desconocida';
+            try {
+                const npm = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+                npmVersion = (await execute(process.execPath, [npm, '--version'], { timeout: 5000 })).stdout.trim();
+            } catch {}
             const systemInfo = {
                 platform: os.platform(),
                 arch: os.arch(),
-                cpu: os.cpus()[0].model,
+                cpu: os.cpus()[0]?.model || 'Desconocida',
                 memory: `${(os.totalmem() / 1024 / 1024 / 1024).toFixed(2)} GB`,
                 freeMemory: `${(os.freemem() / 1024 / 1024 / 1024).toFixed(2)} GB`,
                 uptime: uptime,
                 nodeVersion: process.version,
-                npmVersion: require('child_process').execSync('npm -v').toString().trim(),
+                npmVersion: npmVersion,
                 serverHostname: os.hostname(),
                 environment: process.env.NODE_ENV || 'development'
             };

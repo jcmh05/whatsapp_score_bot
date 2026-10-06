@@ -5,6 +5,8 @@ const userSchema = new mongoose.Schema({
     displayName: { type: String, default: 'Usuario' }, // Nombre del usuario
     totalScore: { type: Number, default: 0 }, // Puntaje total acumulado
     lastCongratulated: { type: Number, default: 0 }, // Último múltiplo de 50 felicitado
+    scoreYear: { type: Number, required: true },
+    importMetadata: { type: mongoose.Schema.Types.Mixed },
     monthlyScores: {
         type: Map,
         of: Number,
@@ -28,10 +30,10 @@ const userSchema = new mongoose.Schema({
             return {
                 lunes: 0,
                 martes: 0,
-                miercoles: 0,
+                'miércoles': 0,
                 jueves: 0,
                 viernes: 0,
-                sabado: 0,
+                'sábado': 0,
                 domingo: 0
             };
         }

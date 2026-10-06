@@ -67,7 +67,7 @@ module.exports = {
             };
 
             // Generar URL de QuickChart
-            const lineChartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(lineChartConfig))}`;
+            const lineChartUrl = `https://quickchart.io/chart?version=4&format=png&c=${encodeURIComponent(JSON.stringify(lineChartConfig))}`;
 
             // Descargar la imagen de la gráfica
             const response = await axios.get(lineChartUrl, { responseType: 'arraybuffer' });
