@@ -1,3 +1,4 @@
+const { NO_TEMPORAL_DATA, hasRecordedValues } = require('../src/statistics');
 const { getContactInfo } = require('../src/contact');
 const User = require('../models/User');
 
@@ -16,6 +17,11 @@ module.exports = {
 
             const hoursMap = user.hours || new Map();
             const counts = Array.from({ length: 24 }, (_, i) => hoursMap.get(`h${i}`) || 0);
+            if (!hasRecordedValues(counts)) {
+                await message.reply(NO_TEMPORAL_DATA);
+                return;
+            }
+
             const maxCount = Math.max(...counts);
 
             let scale = 1;

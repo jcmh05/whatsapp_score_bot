@@ -35,7 +35,7 @@ Detén el bot con **Ctrl+C** y vuelve a ejecutar `npm.cmd start`. Una sesión v�
 | `/average` | Promedio global y mensual |
 | `/progress` | Progreso de meses terminados; requiere dos meses concluidos |
 | `/year:2025` | Ranking y gráficas de un año anterior |
-| `/rewind`, `/rewindchart` | Resumen anual con las reglas de disponibilidad anteriores |
+| `/rewind`, `/rewindchart` | Resumen anual desde el 20 de diciembre a las 00:00 de Madrid; antes muestran la cuenta atrás |
 | `/weather`, `/weather:Jaen` | Tiempo de la ciudad por defecto o la indicada |
 | `/fluky:a,b,c` | Elige una opción al azar |
 | `/fact` | Envía un dato aleatorio y lo elimina, como antes |
@@ -69,6 +69,8 @@ Al cambiar de año en Madrid, archiva y reinicia contadores en una transacción.
 
 Los registros de Excel conservan metadatos de origen e incertidumbres. Las horas/días de 2026 quedan vacíos hasta registrar eventos con `+1`/`-1`. Los números no inventan ese detalle. Las estadísticas horarias solo describen eventos con horario registrado.
 
+Cuando no hay horas o días registrados, `/hours`, `/hourschart`, `/week` y `/weekchart` responden «No tienes registrados datos sobre este año aún, prueba más adelante.» y no descargan ni envían una gráfica vacía.
+
 ## Comprobaciones
 
 ```powershell
@@ -81,11 +83,19 @@ npm.cmd audit --omit=dev
 
 Las pruebas unitarias no conectan con WhatsApp ni MongoDB. Las de integración crean una base `bot_check_...`, prueban concurrencia, duplicados, rollback, archivo anual, `/year`, GridFS y recuperación del proceso con WhatsApp simulado, y borran esa base al terminar. No escriben en `test.users`. GitHub Actions comprueba sintaxis y pruebas unitarias en Node 22 y 24.
 
+Las pruebas de compatibilidad ejecutan las clases `Client` y `Message` y el código inyectado real de whatsapp-web.js, con servicios de WhatsApp simulados. Cubren el identificador nuevo `$1`, respuestas y reacciones, y medios con el campo interno `__x_id`, además de las rutas de comandos y transacciones. La confirmación con la cuenta y el grupo reales se realiza en local.
+
+### Compatibilidad con WhatsApp Web de 2026
+
+La versión publicada 1.34.7 necesita dos correcciones ya aceptadas en el proyecto original: [identificadores `_serialized`/`$1`](https://github.com/wwebjs/whatsapp-web.js/pull/201832) y [colisión del ID al enviar medios](https://github.com/wwebjs/whatsapp-web.js/pull/201923). La dependencia se fija en esa versión y `patch-package` aplica `patches/whatsapp-web.js+1.34.7.patch` al instalar. El parche conserva los campos de subida y elimina la colisión tanto si el ID interno del medio tiene valor como si es `undefined`. No se ocultan ni se reintentan a ciegas los errores de envío.
+
+`npm ci` o `npm install` debe mostrar que el parche se aplicó. No omitas los scripts de instalación. Al actualizar la librería, revisa si ya incorpora las correcciones y retira o adapta el parche antes de cambiar la versión.
+
 Revisión de octubre de 2026: dependencias directas actualizadas; Chart.js local eliminado porque las gráficas usan QuickChart. Puppeteer viene con whatsapp-web.js. Se fija `basic-ftp` 6.2.2 para corregir una alerta transitiva.
 
 Las peticiones a QuickChart indican explícitamente la versión que corresponde a cada configuración (2 para horas/días, 4 para año/progreso/resumen) y el formato PNG; así se conservan títulos y ejes.
 
-Quedan cinco avisos altos propagados desde `extract-zip` 2.0.1, sin versión corregida publicada: [enlaces simbólicos](https://github.com/advisories/GHSA-jmr9-qjv8-65gv) y [escritura fuera del destino](https://github.com/advisories/GHSA-7pqw-9j4j-h8q3). Se usa para instalar Chromium; el bot no extrae ZIP de usuarios. Esta limitación sigue pendiente de la dependencia.
+La auditoría informa de nueve avisos altos, propagados desde dos dependencias sin versión corregida publicada. Cinco proceden de `extract-zip` 2.0.1: [enlaces simbólicos](https://github.com/advisories/GHSA-jmr9-qjv8-65gv) y [escritura fuera del destino](https://github.com/advisories/GHSA-7pqw-9j4j-h8q3). Se usa para instalar Chromium; el bot no extrae ZIP de usuarios. Los otros cuatro proceden de [`braces`, por patrones anidados](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm), a través de `patch-package`; se usa en la instalación con archivos del proyecto, no al procesar mensajes. Ambas limitaciones siguen pendientes de sus dependencias.
 
 ## Alojamiento
 

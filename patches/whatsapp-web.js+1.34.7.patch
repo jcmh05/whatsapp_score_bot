@@ -1,0 +1,216 @@
+diff --git a/node_modules/whatsapp-web.js/src/Client.js b/node_modules/whatsapp-web.js/src/Client.js
+index 800109e..af61962 100644
+--- a/node_modules/whatsapp-web.js/src/Client.js
++++ b/node_modules/whatsapp-web.js/src/Client.js
+@@ -3314,8 +3314,8 @@ class Client extends EventEmitter {
+                         await window.WWebJS.enforceLidAndPnRetrieval(userId);
+ 
+                     return {
+-                        lid: lid?._serialized,
+-                        pn: phone?._serialized,
++                        lid: lid?._serialized || lid?.$1,
++                        pn: phone?._serialized || phone?.$1,
+                     };
+                 }),
+             );
+diff --git a/node_modules/whatsapp-web.js/src/structures/Base.js b/node_modules/whatsapp-web.js/src/structures/Base.js
+index ed1d83c..e408a13 100644
+--- a/node_modules/whatsapp-web.js/src/structures/Base.js
++++ b/node_modules/whatsapp-web.js/src/structures/Base.js
+@@ -12,6 +12,13 @@ class Base {
+         Object.defineProperty(this, 'client', { value: client });
+     }
+ 
++    // Compatibility with WhatsApp Web's serialized ID alias introduced in 2026.
++    static _normalizeId(id) {
++        return id && id._serialized == null && id.$1 != null
++            ? Object.assign({}, id, { _serialized: id.$1 })
++            : id;
++    }
++
+     _clone() {
+         return Object.assign(Object.create(this), this);
+     }
+diff --git a/node_modules/whatsapp-web.js/src/structures/Broadcast.js b/node_modules/whatsapp-web.js/src/structures/Broadcast.js
+index ce03dfa..f0bbb8e 100644
+--- a/node_modules/whatsapp-web.js/src/structures/Broadcast.js
++++ b/node_modules/whatsapp-web.js/src/structures/Broadcast.js
+@@ -19,7 +19,7 @@ class Broadcast extends Base {
+          * ID that represents the chat
+          * @type {object}
+          */
+-        this.id = data.id;
++        this.id = Base._normalizeId(data.id);
+ 
+         /**
+          * Unix timestamp of last status
+diff --git a/node_modules/whatsapp-web.js/src/structures/Channel.js b/node_modules/whatsapp-web.js/src/structures/Channel.js
+index cd3e087..25181de 100644
+--- a/node_modules/whatsapp-web.js/src/structures/Channel.js
++++ b/node_modules/whatsapp-web.js/src/structures/Channel.js
+@@ -29,7 +29,7 @@ class Channel extends Base {
+          * ID that represents the channel
+          * @type {ChannelId}
+          */
+-        this.id = data.id;
++        this.id = Base._normalizeId(data.id);
+ 
+         /**
+          * Title of the channel
+diff --git a/node_modules/whatsapp-web.js/src/structures/Chat.js b/node_modules/whatsapp-web.js/src/structures/Chat.js
+index 40211bf..79624e3 100644
+--- a/node_modules/whatsapp-web.js/src/structures/Chat.js
++++ b/node_modules/whatsapp-web.js/src/structures/Chat.js
+@@ -19,7 +19,7 @@ class Chat extends Base {
+          * ID that represents the chat
+          * @type {object}
+          */
+-        this.id = data.id;
++        this.id = Base._normalizeId(data.id);
+ 
+         /**
+          * Title of the chat
+diff --git a/node_modules/whatsapp-web.js/src/structures/ClientInfo.js b/node_modules/whatsapp-web.js/src/structures/ClientInfo.js
+index 8e273c1..de3dece 100644
+--- a/node_modules/whatsapp-web.js/src/structures/ClientInfo.js
++++ b/node_modules/whatsapp-web.js/src/structures/ClientInfo.js
+@@ -24,7 +24,7 @@ class ClientInfo extends Base {
+          * Current user ID
+          * @type {object}
+          */
+-        this.wid = data.wid;
++        this.wid = Base._normalizeId(data.wid);
+ 
+         /**
+          * @type {object}
+diff --git a/node_modules/whatsapp-web.js/src/structures/Contact.js b/node_modules/whatsapp-web.js/src/structures/Contact.js
+index 4ee5194..6f3775d 100644
+--- a/node_modules/whatsapp-web.js/src/structures/Contact.js
++++ b/node_modules/whatsapp-web.js/src/structures/Contact.js
+@@ -26,7 +26,7 @@ class Contact extends Base {
+          * ID that represents the contact
+          * @type {ContactId}
+          */
+-        this.id = data.id;
++        this.id = Base._normalizeId(data.id);
+ 
+         /**
+          * Contact's phone number
+diff --git a/node_modules/whatsapp-web.js/src/structures/GroupNotification.js b/node_modules/whatsapp-web.js/src/structures/GroupNotification.js
+index a723639..b90fe21 100644
+--- a/node_modules/whatsapp-web.js/src/structures/GroupNotification.js
++++ b/node_modules/whatsapp-web.js/src/structures/GroupNotification.js
+@@ -18,7 +18,7 @@ class GroupNotification extends Base {
+          * ID that represents the groupNotification
+          * @type {object}
+          */
+-        this.id = data.id;
++        this.id = Base._normalizeId(data.id);
+ 
+         /**
+          * Extra content
+@@ -54,7 +54,7 @@ class GroupNotification extends Base {
+          */
+         this.author =
+             typeof data.author === 'object'
+-                ? data.author._serialized
++                ? data.author._serialized || data.author.$1
+                 : data.author;
+ 
+         /**
+diff --git a/node_modules/whatsapp-web.js/src/structures/Message.js b/node_modules/whatsapp-web.js/src/structures/Message.js
+index dd977e8..bac4ecd 100644
+--- a/node_modules/whatsapp-web.js/src/structures/Message.js
++++ b/node_modules/whatsapp-web.js/src/structures/Message.js
+@@ -34,7 +34,7 @@ class Message extends Base {
+          * ID that represents the message
+          * @type {object}
+          */
+-        this.id = data.id;
++        this.id = Base._normalizeId(data.id);
+ 
+         /**
+          * ACK status for the message
+@@ -74,7 +74,7 @@ class Message extends Base {
+          */
+         this.from =
+             typeof data.from === 'object' && data.from !== null
+-                ? data.from._serialized
++                ? data.from._serialized || data.from.$1
+                 : data.from;
+ 
+         /**
+@@ -86,7 +86,7 @@ class Message extends Base {
+          */
+         this.to =
+             typeof data.to === 'object' && data.to !== null
+-                ? data.to._serialized
++                ? data.to._serialized || data.to.$1
+                 : data.to;
+ 
+         /**
+@@ -95,7 +95,7 @@ class Message extends Base {
+          */
+         this.author =
+             typeof data.author === 'object' && data.author !== null
+-                ? data.author._serialized
++                ? data.author._serialized || data.author.$1
+                 : data.author;
+ 
+         /**
+@@ -211,12 +211,12 @@ class Message extends Base {
+                       fromId:
+                           typeof data.from === 'object' &&
+                           '_serialized' in data.from
+-                              ? data.from._serialized
++                              ? data.from._serialized || data.from.$1
+                               : data.from,
+                       toId:
+                           typeof data.to === 'object' &&
+                           '_serialized' in data.to
+-                              ? data.to._serialized
++                              ? data.to._serialized || data.to.$1
+                               : data.to,
+                   }
+                 : undefined;
+diff --git a/node_modules/whatsapp-web.js/src/util/Injected/Utils.js b/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
+index 540078a..3bb1d7b 100644
+--- a/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
++++ b/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
+@@ -483,6 +483,11 @@ exports.LoadUtils = () => {
+             ...extraOptions,
+         };
+ 
++        // MediaData's private/public ID must not replace the outgoing MsgKey.
++        // Keep every upload field; do not replace the model with only toJSON().
++        delete message.__x_id;
++        message.id = newMsgKey;
++
+         // Bot's won't reply if canonicalUrl is set (linking)
+         if (botOptions) {
+             delete message.canonicalUrl;
+@@ -582,7 +587,7 @@ exports.LoadUtils = () => {
+ 
+         return window
+             .require('WAWebCollections')
+-            .Msg.get(newMsgKey._serialized);
++            .Msg.get(newMsgKey._serialized || newMsgKey.$1);
+     };
+ 
+     window.WWebJS.editMessage = async (msg, content, options = {}) => {
+@@ -830,10 +835,14 @@ exports.LoadUtils = () => {
+ 
+         if (typeof msg.id.remote === 'object') {
+             msg.id = Object.assign({}, msg.id, {
+-                remote: msg.id.remote._serialized,
++                remote: msg.id.remote._serialized || msg.id.remote.$1,
+             });
+         }
+ 
++        if (msg.id && msg.id._serialized == null && msg.id.$1 != null) {
++            msg.id = Object.assign({}, msg.id, { _serialized: msg.id.$1 });
++        }
++
+         delete msg.pendingAckUpdate;
+ 
+         return msg;

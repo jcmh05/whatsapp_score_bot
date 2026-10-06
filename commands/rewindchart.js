@@ -1,3 +1,4 @@
+const { rewindAvailability } = require('../src/rewind-date');
 const { getContactInfo } = require('../src/contact');
 const User = require('../models/User');
 const axios = require('axios');
@@ -5,8 +6,6 @@ const { MessageMedia } = require('whatsapp-web.js');
 const moment = require('moment-timezone');
 const config = require('../config');
 
-// Fecha y hora específicas para habilitar el comando
-const REWINDCHART_START_DATE =  moment.tz('2025-12-21 20:30', 'YYYY-MM-DD HH:mm', config.TIMEZONE);
 
 module.exports = {
     match: /^\/rewindchart$/i,
@@ -14,15 +13,9 @@ module.exports = {
         try {
             const now = moment().tz(config.TIMEZONE);
 
-            if (now.isBefore(REWINDCHART_START_DATE)) {
-                // Calcular tiempo restante
-                const duration = moment.duration(REWINDCHART_START_DATE.diff(now));
-                const days = Math.floor(duration.asDays());
-                const hours = duration.hours();
-                const minutes = duration.minutes();
-
-                const timeLeftMessage = `El comando /rewindchart estará disponible en ${days} día${days !== 1 ? 's' : ''}, ${hours} hora${hours !== 1 ? 's' : ''} y ${minutes} minuto${minutes !== 1 ? 's' : ''}.`;
-                await message.reply(timeLeftMessage);
+            const unavailable = rewindAvailability('/rewindchart', now);
+            if (unavailable) {
+                await message.reply(unavailable);
                 return;
             }
 

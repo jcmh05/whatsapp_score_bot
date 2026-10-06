@@ -18,6 +18,9 @@ const { MongoSessionStore } = require('../src/session-store');
 const { safeError } = require('../src/runtime');
 const { Supervisor } = require('../src/supervisor');
 const { withTimeout } = require('../src/timeout');
+const { createHandler } = require('../src/handler');
+const { transport } = require('../test/fixtures/whatsapp-model.cjs');
+const { NO_TEMPORAL_DATA } = require('../src/statistics');
 const database = `bot_check_${randomUUID().replaceAll('-', '').slice(0, 24)}`;
 let tempPath;
 
@@ -47,6 +50,43 @@ async function main() {
         assert.equal((await User.findById(input.id)).totalScore, 55);
         console.log('MongoDB: transacciones, concurrencia, deduplicación, metadatos y rollback verificados.');
 
+        // La ruta completa Message -> handler -> transacción -> reply/react de la librería.
+        await User.updateOne({ _id: input.id }, { $set: { hours: {}, week: {} } });
+        const wa = transport();
+        const originalGetForStats = axios.get;
+        let downloads = 0;
+        const errors = [];
+        const handle = createHandler({ logger: { error: (...args) => errors.push(args) } });
+        axios.get = async () => { downloads++; throw new Error('No se debe descargar una gráfica sin datos.'); };
+        try {
+            for (const command of ['hourschart', 'weekchart', 'hours', 'week']) {
+                await handle(wa.client, wa.incoming(`/${command}`));
+            }
+            assert.equal(downloads, 0);
+            assert.equal(wa.sent.length, 4);
+            assert(wa.sent.every(message => message.body === NO_TEMPORAL_DATA));
+            const increment = wa.incoming('+1');
+            await handle(wa.client, increment);
+            assert.equal((await User.findById(input.id)).totalScore, 56);
+            await handle(wa.client, increment);
+            assert.equal((await User.findById(input.id)).totalScore, 56);
+            const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXOQAAAAASUVORK5CYII=', 'base64');
+            axios.get = async () => { downloads++; return { data: png }; };
+            for (const command of ['hourschart', 'weekchart', 'progress']) {
+                await handle(wa.client, wa.incoming(`/${command}`));
+            }
+            assert.equal(downloads, 3);
+            assert.equal(wa.sent.filter(message => message.type === 'image').length, 3);
+            await handle(wa.client, wa.incoming('-1'));
+            assert.equal((await User.findById(input.id)).totalScore, 55);
+            await handle(wa.client, wa.incoming('25'));
+            assert.equal((await User.findById(input.id)).totalScore, 55);
+            assert.equal(wa.reactions.at(-1).emoji, '✅');
+            assert.deepEqual(errors, []);
+            assert(wa.sent.every(message => !String(message.body).startsWith('Hubo un error')));
+            console.log('Message/Client reales: +1, -1, número, duplicado, datos ausentes y envío de hourschart/weekchart/progress verificados.');
+        } finally { axios.get = originalGetForStats; }
+
         await ensureCurrentYear('2027-01-01T12:00:00Z');
         user = await User.findById(input.id);
         assert.equal(user.scoreYear, 2027); assert.equal(user.totalScore, 0); assert.equal(user.monthlyScores.size, 0);
@@ -58,16 +98,18 @@ async function main() {
 
         // /year se puede ejecutar repetidamente, con el mismo resultado y modelo.
         await mongoose.connection.db.collection('users2025').insertOne({ _id: input.id, displayName: 'Test', totalScore: 60, monthlyScores: { enero: 60 } });
-        const replies = [], images = [], chartUrls = [];
+        const historical = transport();
+        const chartUrls = [];
         const originalGet = axios.get;
         axios.get = async url => { chartUrls.push(url); return { data: Buffer.from('image-test') }; };
         try {
             for (let i = 0; i < 2; i++) await require('../commands/year').callback(
-                { sendMessage: async (...args) => images.push(args) },
-                { body: '/year:2025', from: 'test@g.us', reply: async text => replies.push(text) });
+                historical.client, historical.incoming('/year:2025'));
         } finally { axios.get = originalGet; }
+        const replies = historical.sent.filter(message => message.type === 'chat');
+        const images = historical.sent.filter(message => message.type === 'image');
         assert.equal(replies.length, 2); assert.equal(images.length, 4);
-        assert(replies.every(text => text.includes('Test') && text.includes('60')));
+        assert(replies.every(message => message.body.includes('Test') && message.body.includes('60')));
         assert(chartUrls.every(url => new URL(url).searchParams.get('version') === '4'));
         console.log('/year: dos ejecuciones seguidas, ranking y gráficas verificados.');
 

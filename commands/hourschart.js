@@ -1,3 +1,4 @@
+const { NO_TEMPORAL_DATA, hasRecordedValues } = require('../src/statistics');
 const { getContactInfo } = require('../src/contact');
 const User = require('../models/User');
 const axios = require('axios');
@@ -37,6 +38,11 @@ module.exports = {
             for (let i = 0; i < 24; i++) {
                 labels.push(`${i}:00`);
                 data.push(hoursMap.get(`h${i}`) || 0);
+            }
+
+            if (!hasRecordedValues(data)) {
+                await message.reply(NO_TEMPORAL_DATA);
+                return;
             }
 
             // Crear la configuración del gráfico

@@ -1,3 +1,4 @@
+const { NO_TEMPORAL_DATA, hasRecordedValues } = require('../src/statistics');
 const { getContactInfo } = require('../src/contact');
 const User = require('../models/User');
 const axios = require('axios');
@@ -31,6 +32,11 @@ module.exports = {
             const weekMap = user.week || new Map();
             const labels = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
             const data = labels.map(day => weekMap.get(day.toLowerCase()) || 0);
+
+            if (!hasRecordedValues(data)) {
+                await message.reply(NO_TEMPORAL_DATA);
+                return;
+            }
 
             const chartConfig = {
                 type: 'bar',

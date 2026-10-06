@@ -1,9 +1,9 @@
+const { rewindAvailability } = require('../src/rewind-date');
 const { getContactInfo } = require('../src/contact');
 const User = require('../models/User');
 const moment = require('moment-timezone');
 const config = require('../config');
 
-const REWIND_START_DATE = moment.tz('2025-12-21 20:30', 'YYYY-MM-DD HH:mm', config.TIMEZONE);
 
 /**
  * Obtiene la posición del usuario en el top global.
@@ -71,19 +71,13 @@ module.exports = {
     match: /^\/rewind$/i,
     callback: async (client, message, context) => {
         try {
-          const now = moment().tz(config.TIMEZONE);
+            const now = moment().tz(config.TIMEZONE);
 
-          if (now.isBefore(REWIND_START_DATE)) {
-              // Calcular tiempo restante
-              const duration = moment.duration(REWIND_START_DATE.diff(now));
-              const days = Math.floor(duration.asDays());
-              const hours = duration.hours();
-              const minutes = duration.minutes();
-
-              const timeLeftMessage = `El comando /rewind estará disponible en ${days} día${days !== 1 ? 's' : ''}, ${hours} hora${hours !== 1 ? 's' : ''} y ${minutes} minuto${minutes !== 1 ? 's' : ''}.`;
-              await message.reply(timeLeftMessage);
-              return;
-          }
+            const unavailable = rewindAvailability('/rewind', now);
+            if (unavailable) {
+                await message.reply(unavailable);
+                return;
+            }
 
             // Identificar al usuario que envió el mensaje
             const { id: senderId, name: displayName } = await getContactInfo(client, message);

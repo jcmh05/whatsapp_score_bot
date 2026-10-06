@@ -1,3 +1,4 @@
+const { NO_TEMPORAL_DATA, hasRecordedValues } = require('../src/statistics');
 const { getContactInfo } = require('../src/contact');
 const User = require('../models/User');
 
@@ -17,6 +18,11 @@ module.exports = {
             const weekMap = user.week || new Map();
             const daysOfWeek = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
             const counts = daysOfWeek.map(day => weekMap.get(day) || 0);
+            if (!hasRecordedValues(counts)) {
+                await message.reply(NO_TEMPORAL_DATA);
+                return;
+            }
+
             const maxCount = Math.max(...counts);
 
             let scale = 1;
