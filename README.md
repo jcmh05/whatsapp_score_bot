@@ -76,6 +76,8 @@ Cuando no hay horas o días registrados, `/hours`, `/hourschart`, `/week` y `/we
 ```powershell
 npm.cmd run check
 npm.cmd test
+# Comprobar Chrome real, sin conectar con WhatsApp ni MongoDB.
+npm.cmd run check:browser
 # Optativo: .env y permisos para crear/borrar una base temporal.
 npm.cmd run test:integration
 npm.cmd audit --omit=dev
@@ -83,7 +85,7 @@ npm.cmd audit --omit=dev
 
 Las pruebas unitarias no conectan con WhatsApp ni MongoDB. Las de integración crean una base `bot_check_...`, prueban concurrencia, duplicados, rollback, archivo anual, `/year`, GridFS y recuperación del proceso con WhatsApp simulado, y borran esa base al terminar. No escriben en `test.users`. GitHub Actions comprueba sintaxis y pruebas unitarias en Node 22 y 24.
 
-Las pruebas de compatibilidad ejecutan las clases `Client` y `Message` y el código inyectado real de whatsapp-web.js, con servicios de WhatsApp simulados. Cubren el identificador nuevo `$1`, respuestas y reacciones, y medios con el campo interno `__x_id`, además de las rutas de comandos y transacciones. La confirmación con la cuenta y el grupo reales se realiza en local.
+Las pruebas de compatibilidad ejecutan las clases `Client` y `Message` y el código inyectado real de whatsapp-web.js, con servicios de WhatsApp simulados. Cubren el identificador nuevo `$1`, respuestas y reacciones, y medios con el campo interno `__x_id`, además de las rutas de comandos y transacciones. La confirmación con la cuenta y el grupo reales se realiza en local. GitHub Actions también construye el contenedor y comprueba Chrome real en su imagen final, con 512 MiB de memoria y 64 MiB de memoria compartida.
 
 ### Compatibilidad con WhatsApp Web de 2026
 
@@ -101,7 +103,19 @@ La auditoría informa de nueve avisos altos, propagados desde dos dependencias s
 
 Instala con `npm ci` y arranca con `npm start`; `Procfile` está actualizado. El servidor debe ejecutar Node y Chromium, mantener el proceso activo y acceder a Atlas. Configura las variables en el proveedor. `PUPPETEER_EXECUTABLE_PATH` permite usar su Chromium; `PUPPETEER_NO_SANDBOX=true` solo cuando lo requiera ese entorno.
 
-Para disco efímero usa sesión remota o volumen persistente. El supervisor recupera fallos mientras el servidor está funcionando; no evita que el proveedor suspenda la instancia o termine el contenedor. El alojamiento se elegirá después de la prueba local.
+Para disco efímero usa sesión remota o volumen persistente. El supervisor recupera fallos mientras el servidor está funcionando; no evita que el proveedor suspenda la instancia o termine el contenedor.
+
+### Railway
+
+Railway detecta el `Dockerfile` del repositorio. La imagen incluye Node 24, las bibliotecas de Linux y la versión de Chrome que descarga el Puppeteer fijado en `package-lock.json`. Chrome se comprueba durante la construcción; si no puede abrir una página, la construcción falla. El contexto excluye `.env`, credenciales y sesiones locales mediante `.dockerignore`.
+
+Configura `MONGODB_URI`, `ADMIN`, `BOT_PHONE`, `SESSION_ID` y `PORT=3000` con los valores del servicio. Usa `AUTH_STRATEGY=remote` para conservar la sesión en MongoDB; una variable de Railway con valor `local` prevalece sobre el valor de la imagen. Conserva el mismo `SESSION_ID` en futuros despliegues. El primer arranque con sesión remota puede requerir un QR nuevo; espera al mensaje «Sesión de WhatsApp respaldada en MongoDB» antes de reiniciar.
+
+La imagen establece `PUPPETEER_NO_SANDBOX=true` para este contenedor y `PUPPETEER_DUMPIO=true` para incluir el error real de Chrome en los logs. En Linux se añade `--disable-dev-shm-usage` para no depender de la pequeña memoria compartida del contenedor. Las opciones locales conservan sus valores del `.env`.
+
+Si cambias del constructor automático al Dockerfile, despliega el último commit de `main`. No basta con reiniciar el contenedor antiguo. No hace falta configurar una ruta manual a Chromium ni añadir un comando de construcción en Railway. El arranque por defecto de la imagen usa el supervisor; si el servicio ya tiene `npm start` como comando personalizado, también funciona.
+
+Si configuras un healthcheck de despliegue, usa `/healthz`: funciona mientras esperas el QR. `/readyz` solo devuelve 200 después de vincular WhatsApp y conectar MongoDB. Estos endpoints no sustituyen la comprobación real del navegador durante la construcción.
 
 ## Estructura
 

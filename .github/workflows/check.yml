@@ -19,3 +19,11 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t bot-whatsapp:check .
+      # Check the final image again with the standard 64 MiB shared memory limit.
+      - run: docker run --rm --memory=512m --shm-size=64m bot-whatsapp:check node scripts/check-browser.js

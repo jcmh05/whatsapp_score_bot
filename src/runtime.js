@@ -9,6 +9,7 @@ const { ensureCurrentYear } = require('./year');
 const { scorePeriod } = require('./time');
 const { MongoSessionStore } = require('./session-store');
 const { withTimeout } = require('./timeout');
+const { browserOptions } = require('./browser');
 
 function safeError(error) {
     return String(error?.stack || error).replace(/mongodb(?:\+srv)?:\/\/[^\s"']+/g, '<MongoDB URI omitida>');
@@ -86,9 +87,7 @@ async function run({ clientFactory = clientOptions => new Client(clientOptions) 
         const authStrategy = options.authStrategy === 'local' ? new LocalAuth(authOptions) : new RemoteAuth({
             ...authOptions, store: new MongoSessionStore({ mongoose, dataPath: options.dataPath }), backupSyncIntervalMs: options.backupMs
         });
-        client = clientFactory({ authStrategy,
-            puppeteer: { headless: true, pipe: true, executablePath: options.executablePath,
-                args: options.noSandbox ? ['--no-sandbox', '--disable-setuid-sandbox'] : [] } });
+        client = clientFactory({ authStrategy, puppeteer: browserOptions(options) });
         const handler = createHandler({ beforeMessage: prepareYear, logger });
         client.on('message', message => {
             if (['ready', 'offline'].includes(status.state) && !stopped) void handler(client, message).catch(fail);

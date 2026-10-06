@@ -7,6 +7,7 @@
     "start": "node scripts/start.js",
     "start:once": "node index.js",
     "check": "node scripts/check.js",
+    "check:browser": "node scripts/check-browser.js",
     "test": "node --test test/score.test.js test/handler.test.js test/supervisor.test.js test/whatsapp.test.js",
     "test:integration": "node scripts/test-integration.js",
     "postinstall": "patch-package --error-on-fail"

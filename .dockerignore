@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+.env
+.env.*
+*.env
+.wwebjs_auth
+.wwebjs_cache
+.cache
+*.log
+*.zip
+coverage

@@ -15,7 +15,8 @@ function settings(env = process.env) {
     return { botPhone, sessionId, authStrategy, port, backupMs,
         dataPath: path.resolve(env.AUTH_DATA_PATH || '.wwebjs_auth'),
         executablePath: env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        noSandbox: env.PUPPETEER_NO_SANDBOX === 'true' };
+        noSandbox: env.PUPPETEER_NO_SANDBOX === 'true',
+        dumpio: env.PUPPETEER_DUMPIO === 'true' };
 }
 
 module.exports = { settings };
