@@ -13,6 +13,28 @@ index 800109e..af61962 100644
                      };
                  }),
              );
+diff --git a/node_modules/whatsapp-web.js/src/authStrategies/RemoteAuth.js b/node_modules/whatsapp-web.js/src/authStrategies/RemoteAuth.js
+index 7c1efdf..4ba8b27 100644
+--- a/node_modules/whatsapp-web.js/src/authStrategies/RemoteAuth.js
++++ b/node_modules/whatsapp-web.js/src/authStrategies/RemoteAuth.js
+@@ -223,6 +223,7 @@ class RemoteAuth extends BaseAuthStrategy {
+     async unCompressSession(compressedSessionPath) {
+         var stream = fs.createReadStream(compressedSessionPath);
+         await new Promise((resolve, reject) => {
++            stream.on('error', reject);
+             stream
+                 .pipe(
+                     unzipper.Extract({
+@@ -231,7 +232,8 @@ class RemoteAuth extends BaseAuthStrategy {
+                     }),
+                 )
+                 .on('error', (err) => reject(err))
+-                .on('finish', () => resolve());
++                // Extract's close event waits for all files to be written to disk.
++                .on('close', () => resolve());
+         });
+         await fs.promises.unlink(compressedSessionPath);
+     }
 diff --git a/node_modules/whatsapp-web.js/src/structures/Base.js b/node_modules/whatsapp-web.js/src/structures/Base.js
 index ed1d83c..e408a13 100644
 --- a/node_modules/whatsapp-web.js/src/structures/Base.js

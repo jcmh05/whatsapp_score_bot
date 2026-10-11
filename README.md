@@ -53,6 +53,8 @@ Espera a MongoDB antes de iniciar WhatsApp. Una caída de Chromium, desconexión
 - `AUTH_STRATEGY=local` (por defecto): sesión en `AUTH_DATA_PATH`; conserva esa carpeta.
 - `AUTH_STRATEGY=remote`: usa `RemoteAuth` y GridFS en MongoDB, con un adaptador compatible con la ruta de ZIP de whatsapp-web.js 1.34. No usa la colección antigua `sessions`. El primer respaldo tarda aproximadamente un minuto después de quedar listo: espera al mensaje de respaldo antes de cerrar. Los siguientes se realizan cada `REMOTE_BACKUP_MS` (por defecto, cinco minutos).
 
+La restauración crea la carpeta local antes de descargar el ZIP de GridFS y espera a que todos sus archivos se hayan descomprimido antes de abrir Chrome. Así puede recuperar la sesión en un contenedor nuevo aunque `.wwebjs_auth` todavía no exista. Las pruebas cubren ese caso con un ZIP real y dos inicializaciones de `RemoteAuth`, además de la descarga desde MongoDB en una base temporal.
+
 Mantén el mismo `SESSION_ID`; si está vacío se deriva de `BOT_PHONE`. Cambiar de estrategia/identificador o revocar la sesión desde el teléfono puede requerir otro QR. No ejecutes dos instancias con la misma sesión al mismo tiempo.
 
 Primero se confirma la escritura en MongoDB; después se envían felicitaciones y confirmaciones. Si falla la respuesta, el contador permanece guardado. Esas respuestas no se reenvían automáticamente. Los identificadores de mensajes se conservan 30 días para evitar duplicados. Se procesan mensajes en orden y se usa su fecha para asignar mes/hora/día.
@@ -92,6 +94,8 @@ Las pruebas de compatibilidad ejecutan las clases `Client` y `Message` y el cód
 La versión publicada 1.34.7 necesita dos correcciones ya aceptadas en el proyecto original: [identificadores `_serialized`/`$1`](https://github.com/wwebjs/whatsapp-web.js/pull/201832) y [colisión del ID al enviar medios](https://github.com/wwebjs/whatsapp-web.js/pull/201923). La dependencia se fija en esa versión y `patch-package` aplica `patches/whatsapp-web.js+1.34.7.patch` al instalar. El parche conserva los campos de subida y elimina la colisión tanto si el ID interno del medio tiene valor como si es `undefined`. No se ocultan ni se reintentan a ciegas los errores de envío.
 
 `npm ci` o `npm install` debe mostrar que el parche se aplicó. No omitas los scripts de instalación. Al actualizar la librería, revisa si ya incorpora las correcciones y retira o adapta el parche antes de cambiar la versión.
+
+El mismo parche corrige la espera de `RemoteAuth` al descomprimir: el evento `close` de [`unzipper.Extract`](https://github.com/ZJONSSON/node-unzipper#extract-to-a-directory) confirma que los archivos están escritos. El evento `finish` usado por la librería puede llegar antes. La descarga del ZIP crea su carpeta de destino desde `src/session-store.js`.
 
 Revisión de octubre de 2026: dependencias directas actualizadas; Chart.js local eliminado porque las gráficas usan QuickChart. Puppeteer viene con whatsapp-web.js. Se fija `basic-ftp` 6.2.2 para corregir una alerta transitiva.
 

@@ -121,11 +121,14 @@ async function main() {
         await fs.writeFile(zip, 'second-backup'); await store.save({ session });
         assert(await store.sessionExists({ session }));
         assert.equal(await mongoose.connection.db.collection(`whatsapp-${session}.files`).countDocuments(), 1);
-        const extracted = path.join(tempPath, 'restored.zip');
+        const restoreDirectory = path.join(tempPath, 'fresh-container', '.wwebjs_auth');
+        await assert.rejects(fs.access(restoreDirectory), { code: 'ENOENT' });
+        const extracted = path.join(restoreDirectory, `${session}.zip`);
         await store.extract({ session, path: extracted });
         assert.equal(await fs.readFile(extracted, 'utf8'), 'second-backup');
+        assert(await store.sessionExists({ session }));
         await store.delete({ session }); assert.equal(await store.sessionExists({ session }), false);
-        console.log('Sesión remota: guardar, reemplazar, restaurar y borrar en GridFS verificados.');
+        console.log('Sesión remota: guardar, reemplazar, restaurar con carpeta ausente y borrar en GridFS verificados.');
 
         await User.deleteMany({});
         const socket = net.createServer();
@@ -184,7 +187,14 @@ async function main() {
         } finally { await mongoose.disconnect(); }
         if (tempPath) {
             // Solo los archivos creados por esta prueba, sin borrado recursivo.
-            for (const name of ['RemoteAuth-test.zip', 'restored.zip']) await fs.unlink(path.join(tempPath, name)).catch(() => {});
+            for (const name of ['RemoteAuth-test.zip', path.join('fresh-container', '.wwebjs_auth', 'RemoteAuth-test.zip')]) {
+                await fs.unlink(path.join(tempPath, name)).catch(() => {});
+            }
+            for (const directory of [path.join('fresh-container', '.wwebjs_auth'), 'fresh-container']) {
+                await fs.rmdir(path.join(tempPath, directory)).catch(error => {
+                    if (error.code !== 'ENOENT') throw error;
+                });
+            }
             await fs.rmdir(tempPath);
         }
     }

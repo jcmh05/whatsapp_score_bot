@@ -29,7 +29,10 @@ class MongoSessionStore {
         await Promise.all(previous.map(file => bucket.delete(file._id)));
     }
     async extract({ session, path: destination }) {
-        await pipeline(this.bucket(session).openDownloadStreamByName(`${session}.zip`), fs.createWriteStream(destination));
+        const bucket = this.bucket(session);
+        // A fresh container has the backup in MongoDB but no local auth directory.
+        await fs.promises.mkdir(path.dirname(destination), { recursive: true });
+        await pipeline(bucket.openDownloadStreamByName(`${session}.zip`), fs.createWriteStream(destination));
     }
     async delete({ session }) {
         const bucket = this.bucket(session);
