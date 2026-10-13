@@ -161,9 +161,12 @@ async function main() {
             let health = await fetch(`http://127.0.0.1:${port}/healthz`);
             assert.equal(health.status, 200); assert.equal((await health.json()).state, 'awaiting_qr');
             assert.equal((await fetch(`http://127.0.0.1:${port}/readyz`)).status, 503);
+            let respawned = once(supervisor, 'spawn'); child.send({ type: 'page_crash_before_auth' });
+            [child] = await withTimeout(respawned, 20000, 'Reinicio por caída de página antes de autenticar');
+            await waitState(child, 'awaiting_qr');
             await authenticate(child);
             assert.equal((await fetch(`http://127.0.0.1:${port}/readyz`)).status, 200);
-            let respawned = once(supervisor, 'spawn'); child.send({ type: 'browser_crash' });
+            respawned = once(supervisor, 'spawn'); child.send({ type: 'browser_crash' });
             [child] = await withTimeout(respawned, 20000, 'Reinicio por caída de navegador');
             await waitState(child, 'awaiting_qr'); await authenticate(child);
             respawned = once(supervisor, 'spawn'); child.send({ type: 'bridge_lost' });

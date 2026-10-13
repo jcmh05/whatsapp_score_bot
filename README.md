@@ -95,7 +95,7 @@ Las pruebas de compatibilidad ejecutan las clases `Client` y `Message` y el cód
 
 `check:browser` también ejecuta `Client.inject` y `LoadUtils` reales sobre una página local de prueba: sesión que ya está sincronizada, inyección concurrente, navegación de un iframe, eventos de sincronización repetidos y recarga del documento principal. Comprueba que se recuperan las funciones del bot y que no se duplica `ready`. No inicia una sesión real ni envía mensajes. La integración comprueba que perder esas funciones reinicia el proceso sin guardar el mensaje que no pudo procesar.
 
-También provoca una caída controlada de una página vacía con CDP y comprueba que llegan el evento nativo de terminación y el diagnóstico de recursos. Esto valida la captura del fallo; no reproduce ni atribuye la causa de una caída con la cuenta real.
+También registra una sesión CDP real, comprueba el descubrimiento de páginas y lee los recursos del entorno. La prueba del build no provoca caídas deliberadas de Chrome. La captura de eventos se verifica aparte con el transporte simulado, y la integración comprueba el reinicio tras una caída de página anterior a la autenticación. La causa de las caídas con la cuenta real se determina con sus logs.
 
 ### Compatibilidad con WhatsApp Web de 2026
 
