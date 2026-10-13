@@ -60,3 +60,18 @@ test('RemoteAuth restaura un ZIP guardado en un contenedor sin carpeta de sesió
     }
     assert.equal(downloads, 2);
 });
+
+test('RemoteAuth mantiene un solo intervalo de respaldo al repetir ready tras una recarga', async t => {
+    let checks = 0;
+    const strategy = new RemoteAuth({ clientId: 'backup-test', backupSyncIntervalMs: 60000,
+        store: { sessionExists: async () => { checks++; return true; } } });
+    strategy.sessionName = 'RemoteAuth-backup-test';
+    t.after(() => strategy.destroy());
+    await strategy.afterAuthReady();
+    const firstInterval = strategy.backupSync;
+    await strategy.afterAuthReady();
+    assert.equal(checks, 1); assert.equal(strategy.backupSync, firstInterval);
+    await strategy.destroy();
+    await strategy.afterAuthReady();
+    assert.equal(checks, 2); assert.notEqual(strategy.backupSync, firstInterval);
+});

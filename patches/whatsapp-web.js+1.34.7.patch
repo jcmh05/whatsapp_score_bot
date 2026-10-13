@@ -1,8 +1,143 @@
 diff --git a/node_modules/whatsapp-web.js/src/Client.js b/node_modules/whatsapp-web.js/src/Client.js
-index 800109e..af61962 100644
+index 800109e..f4a0f4c 100644
 --- a/node_modules/whatsapp-web.js/src/Client.js
 +++ b/node_modules/whatsapp-web.js/src/Client.js
-@@ -3314,8 +3314,8 @@ class Client extends EventEmitter {
+@@ -113,6 +113,17 @@ class Client extends EventEmitter {
+      * Private function
+      */
+     async inject() {
++        if (this._injectPromise) return this._injectPromise;
++        const task = this._inject();
++        this._injectPromise = task;
++        try {
++            return await task;
++        } finally {
++            if (this._injectPromise === task) this._injectPromise = null;
++        }
++    }
++
++    async _inject() {
+         if (
+             this.options.authTimeoutMs === undefined ||
+             this.options.authTimeoutMs == 0
+@@ -193,6 +204,7 @@ class Client extends EventEmitter {
+                 await this.destroy();
+                 if (restart) {
+                     // session restore failed so try again but without session to force new authentication
++                    this._injectPromise = null;
+                     return this.initialize();
+                 }
+                 return;
+@@ -296,6 +308,13 @@ class Client extends EventEmitter {
+             this.pupPage,
+             'onAppStateHasSyncedEvent',
+             async () => {
++                // A document can report synchronization more than once. Initialize it once.
++                const initializeDocument = await this.pupPage.evaluate(() => {
++                    if (window._wwjsSyncStarted) return false;
++                    window._wwjsSyncStarted = true;
++                    return true;
++                });
++                if (!initializeDocument) return;
+                 const authEventPayload =
+                     await this.authStrategy.getAuthEventPayload();
+                 /**
+@@ -305,7 +324,8 @@ class Client extends EventEmitter {
+                 this.emit(Events.AUTHENTICATED, authEventPayload);
+ 
+                 const injected = await this.pupPage.evaluate(async () => {
+-                    return typeof window.WWebJS !== 'undefined';
++                    return typeof window.WWebJS?.getChat === 'function' &&
++                        typeof window.WWebJS?.getContact === 'function';
+                 });
+ 
+                 if (!injected) {
+@@ -398,28 +418,23 @@ class Client extends EventEmitter {
+             },
+         );
+         await this.pupPage.evaluate(() => {
+-            window
+-                .require('WAWebSocketModel')
+-                .Socket.on('change:state', (_AppState, state) => {
+-                    window.onAuthAppStateChangedEvent(state);
+-                });
+-            window
+-                .require('WAWebSocketModel')
+-                .Socket.on('change:hasSynced', () => {
+-                    window.onAppStateHasSyncedEvent();
+-                });
++            const Socket = window.require('WAWebSocketModel').Socket;
+             const Cmd = window.require('WAWebCmd').Cmd;
+-            Cmd.on('offline_progress_update_from_bridge', () => {
+-                window.onOfflineProgressUpdateEvent(
+-                    window.AuthStore.OfflineMessageHandler.getOfflineDeliveryProgress(),
+-                );
+-            });
+-            Cmd.on('logout', async () => {
+-                await window.onLogoutEvent();
+-            });
+-            Cmd.on('logout_from_bridge', async () => {
+-                await window.onLogoutEvent();
+-            });
++            const listeners = [
++                [Socket, 'change:state', (_model, state) => window.onAuthAppStateChangedEvent(state)],
++                [Socket, 'change:hasSynced', () => {
++                    if (Socket.hasSynced === true && !window._wwjsSyncStarted) window.onAppStateHasSyncedEvent();
++                }],
++                [Cmd, 'offline_progress_update_from_bridge', () => window.onOfflineProgressUpdateEvent(
++                    window.AuthStore.OfflineMessageHandler.getOfflineDeliveryProgress())],
++                [Cmd, 'logout', () => window.onLogoutEvent()],
++                [Cmd, 'logout_from_bridge', () => window.onLogoutEvent()],
++            ];
++            for (const [model, event, listener] of window._wwjsListeners || []) model.off(event, listener);
++            for (const [model, event, listener] of listeners) model.on(event, listener);
++            window._wwjsListeners = listeners;
++            // A restored/reloaded session may have synced before the listener was attached.
++            if (Socket.hasSynced === true && !window._wwjsSyncStarted) window.onAppStateHasSyncedEvent();
+         });
+     }
+ 
+@@ -490,17 +505,31 @@ class Client extends EventEmitter {
+             referer: 'https://whatsapp.com/',
+         });
+ 
++        this._registerFramenavigatedHandler();
+         await this.inject();
++    }
+ 
+-        this.pupPage.on('framenavigated', async (frame) => {
+-            if (frame.url().includes('post_logout=1') || this.lastLoggedOut) {
+-                this.emit(Events.DISCONNECTED, 'LOGOUT');
+-                await this.authStrategy.logout();
+-                await this.authStrategy.beforeBrowserInitialized();
+-                await this.authStrategy.afterBrowserInitialized();
+-                this.lastLoggedOut = false;
++    _registerFramenavigatedHandler() {
++        if (this._navigationPage === this.pupPage) return;
++        this._navigationPage = this.pupPage;
++        const page = this.pupPage;
++        page.on('framenavigated', async (frame) => {
++            if (frame.parentFrame() !== null || this.pupPage !== page) return;
++            try {
++                if (frame.url().includes('post_logout=1') || this.lastLoggedOut) {
++                    this.emit(Events.DISCONNECTED, 'LOGOUT');
++                    await this.authStrategy.logout();
++                    await this.authStrategy.beforeBrowserInitialized();
++                    await this.authStrategy.afterBrowserInitialized();
++                    this.lastLoggedOut = false;
++                }
++                const injected = await page.evaluate(() =>
++                    typeof window.WWebJS?.getChat === 'function' && typeof window.WWebJS?.getContact === 'function');
++                if (injected) return;
++                await this.inject();
++            } catch (error) {
++                this.emit('error', error);
+             }
+-            await this.inject();
+         });
+     }
+ 
+@@ -3314,8 +3343,8 @@ class Client extends EventEmitter {
                          await window.WWebJS.enforceLidAndPnRetrieval(userId);
  
                      return {
@@ -14,10 +149,32 @@ index 800109e..af61962 100644
                  }),
              );
 diff --git a/node_modules/whatsapp-web.js/src/authStrategies/RemoteAuth.js b/node_modules/whatsapp-web.js/src/authStrategies/RemoteAuth.js
-index 7c1efdf..4ba8b27 100644
+index 7c1efdf..3d47334 100644
 --- a/node_modules/whatsapp-web.js/src/authStrategies/RemoteAuth.js
 +++ b/node_modules/whatsapp-web.js/src/authStrategies/RemoteAuth.js
-@@ -223,6 +223,7 @@ class RemoteAuth extends BaseAuthStrategy {
+@@ -97,6 +97,7 @@ class RemoteAuth extends BaseAuthStrategy {
+ 
+     async destroy() {
+         clearInterval(this.backupSync);
++        this.backupStarted = false;
+     }
+ 
+     async disconnect() {
+@@ -113,9 +114,13 @@ class RemoteAuth extends BaseAuthStrategy {
+                 .catch(() => {});
+         }
+         clearInterval(this.backupSync);
++        this.backupStarted = false;
+     }
+ 
+     async afterAuthReady() {
++        // Re-injection after a page reload must not start another backup interval.
++        if (this.backupStarted) return;
++        this.backupStarted = true;
+         const sessionExists = await this.store.sessionExists({
+             session: this.sessionName,
+         });
+@@ -223,6 +228,7 @@ class RemoteAuth extends BaseAuthStrategy {
      async unCompressSession(compressedSessionPath) {
          var stream = fs.createReadStream(compressedSessionPath);
          await new Promise((resolve, reject) => {
@@ -25,7 +182,7 @@ index 7c1efdf..4ba8b27 100644
              stream
                  .pipe(
                      unzipper.Extract({
-@@ -231,7 +232,8 @@ class RemoteAuth extends BaseAuthStrategy {
+@@ -231,7 +237,8 @@ class RemoteAuth extends BaseAuthStrategy {
                      }),
                  )
                  .on('error', (err) => reject(err))

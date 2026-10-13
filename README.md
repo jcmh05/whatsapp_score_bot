@@ -50,6 +50,8 @@ Los nombres se actualizan con el contacto al registrar puntos, como antes. Los i
 
 Espera a MongoDB antes de iniciar WhatsApp. Una caída de Chromium, desconexión o error no controlado provoca cierre y reinicio. Comprueba WhatsApp/MongoDB cada 30 segundos y reinicia si el problema persiste 90 segundos. La espera del QR no expira; la inicialización después de autenticarse tiene un límite de tres minutos. Descargas y comandos tienen límites de tiempo.
 
+Antes de declarar `Bot listo` y antes de procesar cada comando o puntaje, comprueba que WhatsApp está conectado y que siguen disponibles las funciones de contactos, chats y mensajes. Una página que pierde esas funciones o un navegador que no contesta en diez segundos provoca reinicio para restaurar la sesión. Estos fallos no esperan el margen de 90 segundos reservado a desconexiones temporales.
+
 - `AUTH_STRATEGY=local` (por defecto): sesión en `AUTH_DATA_PATH`; conserva esa carpeta.
 - `AUTH_STRATEGY=remote`: usa `RemoteAuth` y GridFS en MongoDB, con un adaptador compatible con la ruta de ZIP de whatsapp-web.js 1.34. No usa la colección antigua `sessions`. El primer respaldo tarda aproximadamente un minuto después de quedar listo: espera al mensaje de respaldo antes de cerrar. Los siguientes se realizan cada `REMOTE_BACKUP_MS` (por defecto, cinco minutos).
 
@@ -89,6 +91,8 @@ Las pruebas unitarias no conectan con WhatsApp ni MongoDB. Las de integración c
 
 Las pruebas de compatibilidad ejecutan las clases `Client` y `Message` y el código inyectado real de whatsapp-web.js, con servicios de WhatsApp simulados. Cubren el identificador nuevo `$1`, respuestas y reacciones, y medios con el campo interno `__x_id`, además de las rutas de comandos y transacciones. La confirmación con la cuenta y el grupo reales se realiza en local. GitHub Actions también construye el contenedor y comprueba Chrome real en su imagen final, con 512 MiB de memoria y 64 MiB de memoria compartida.
 
+`check:browser` también ejecuta `Client.inject` y `LoadUtils` reales sobre una página local de prueba: sesión que ya está sincronizada, inyección concurrente, navegación de un iframe, eventos de sincronización repetidos y recarga del documento principal. Comprueba que se recuperan las funciones del bot y que no se duplica `ready`. No inicia una sesión real ni envía mensajes. La integración comprueba que perder esas funciones reinicia el proceso sin guardar el mensaje que no pudo procesar.
+
 ### Compatibilidad con WhatsApp Web de 2026
 
 La versión publicada 1.34.7 necesita dos correcciones ya aceptadas en el proyecto original: [identificadores `_serialized`/`$1`](https://github.com/wwebjs/whatsapp-web.js/pull/201832) y [colisión del ID al enviar medios](https://github.com/wwebjs/whatsapp-web.js/pull/201923). La dependencia se fija en esa versión y `patch-package` aplica `patches/whatsapp-web.js+1.34.7.patch` al instalar. El parche conserva los campos de subida y elimina la colisión tanto si el ID interno del medio tiene valor como si es `undefined`. No se ocultan ni se reintentan a ciegas los errores de envío.
@@ -96,6 +100,8 @@ La versión publicada 1.34.7 necesita dos correcciones ya aceptadas en el proyec
 `npm ci` o `npm install` debe mostrar que el parche se aplicó. No omitas los scripts de instalación. Al actualizar la librería, revisa si ya incorpora las correcciones y retira o adapta el parche antes de cambiar la versión.
 
 El mismo parche corrige la espera de `RemoteAuth` al descomprimir: el evento `close` de [`unzipper.Extract`](https://github.com/ZJONSSON/node-unzipper#extract-to-a-directory) confirma que los archivos están escritos. El evento `finish` usado por la librería puede llegar antes. La descarga del ZIP crea su carpeta de destino desde `src/session-store.js`.
+
+También incorpora los cambios de recuperación de página de [la corrección de sincronización y reinyección del proyecto original](https://github.com/wwebjs/whatsapp-web.js/pull/201653): ignorar navegaciones de iframes, recuperar las funciones si el documento recarga cuando ya estaba sincronizado y limpiar los listeners anteriores. La inyección se serializa y cada documento se prepara una sola vez; `RemoteAuth` conserva un único intervalo de respaldo aunque se recargue la página. El supervisor recupera los errores de navegación que impiden completar esa preparación.
 
 Revisión de octubre de 2026: dependencias directas actualizadas; Chart.js local eliminado porque las gráficas usan QuickChart. Puppeteer viene con whatsapp-web.js. Se fija `basic-ftp` 6.2.2 para corregir una alerta transitiva.
 

@@ -166,13 +166,17 @@ async function main() {
             let respawned = once(supervisor, 'spawn'); child.send({ type: 'browser_crash' });
             [child] = await withTimeout(respawned, 20000, 'Reinicio por caída de navegador');
             await waitState(child, 'awaiting_qr'); await authenticate(child);
+            respawned = once(supervisor, 'spawn'); child.send({ type: 'bridge_lost' });
+            [child] = await withTimeout(respawned, 20000, 'Reinicio al perder las funciones de WhatsApp');
+            assert.equal(await User.countDocuments(), 0, 'No se debe guardar un punto con WhatsApp incompleto.');
+            await waitState(child, 'awaiting_qr'); await authenticate(child);
             supervisor.heartbeatTimeout = 1500;
             respawned = once(supervisor, 'spawn'); child.send({ type: 'hang' });
             [child] = await withTimeout(respawned, 10000, 'Reinicio por proceso bloqueado');
             // Restaurar el margen normal para que la carga de módulos pueda terminar.
             supervisor.heartbeatTimeout = 90000;
             await waitState(child, 'awaiting_qr'); await authenticate(child);
-            console.log('Proceso real: HTTP, espera de QR, readiness, reinicio por caída y bloqueo verificados (WhatsApp simulado).');
+            console.log('Proceso real: HTTP, espera de QR, readiness, reinicio por caída, bridge perdido y bloqueo verificados (WhatsApp simulado).');
         } finally {
             const stopped = once(supervisor, 'stopped'); supervisor.stop();
             await withTimeout(stopped, 10000, 'Cierre del supervisor de pruebas');

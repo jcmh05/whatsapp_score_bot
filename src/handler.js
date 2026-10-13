@@ -12,13 +12,16 @@ const commands = fs.readdirSync(path.join(__dirname, '..', 'commands'))
 
 function createHandler({ beforeMessage = async () => {}, record = recordScore,
     identify = getContactInfo, commandList = commands, extra = generateRandomCongratsExtra,
-    logger = console } = {}) {
+    logger = console, onUnavailable = () => false } = {}) {
     let shouldReply = true;
     const enqueue = createQueue();
     const context = { setShouldReply: value => { shouldReply = value; }, getShouldReply: () => shouldReply };
     async function safely(action) {
         try { await withTimeout(action(), 15000, 'Respuesta de WhatsApp'); }
-        catch (error) { logger.error('Error enviando respuesta:', error); }
+        catch (error) {
+            logger.error('Error enviando respuesta:', error);
+            onUnavailable(error);
+        }
     }
     return (client, message) => enqueue(async () => {
         if (message.fromMe || !message.from || message.from === 'status@broadcast' ||
@@ -55,6 +58,7 @@ function createHandler({ beforeMessage = async () => {}, record = recordScore,
             }
         } catch (error) {
             logger.error('Error procesando mensaje:', error);
+            if (onUnavailable(error)) return;
             if (shouldReply) await safely(() => message.reply(command ? 'Hubo un error al ejecutar el comando.' :
                 'Hubo un error al registrar tu puntaje. Por favor, inténtalo de nuevo.'));
         }

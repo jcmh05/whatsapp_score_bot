@@ -10,6 +10,7 @@ const { scorePeriod } = require('./time');
 const { MongoSessionStore } = require('./session-store');
 const { withTimeout } = require('./timeout');
 const { browserOptions } = require('./browser');
+const { checkWhatsApp, isWhatsAppUnavailable } = require('./whatsapp-health');
 
 function safeError(error) {
     return String(error?.stack || error).replace(/mongodb(?:\+srv)?:\/\/[^\s"']+/g, '<MongoDB URI omitida>');
@@ -88,7 +89,14 @@ async function run({ clientFactory = clientOptions => new Client(clientOptions) 
             ...authOptions, store: new MongoSessionStore({ mongoose, dataPath: options.dataPath }), backupSyncIntervalMs: options.backupMs
         });
         client = clientFactory({ authStrategy, puppeteer: browserOptions(options) });
-        const handler = createHandler({ beforeMessage: prepareYear, logger });
+        const handler = createHandler({ beforeMessage: async () => {
+            await checkWhatsApp(client);
+            await prepareYear();
+        }, logger, onUnavailable: error => {
+            if (!isWhatsAppUnavailable(error)) return false;
+            fail(error);
+            return true;
+        } });
         client.on('message', message => {
             if (['ready', 'offline'].includes(status.state) && !stopped) void handler(client, message).catch(fail);
         });
@@ -111,12 +119,14 @@ async function run({ clientFactory = clientOptions => new Client(clientOptions) 
                 await stop(2, 'La cuenta vinculada no coincide con BOT_PHONE. Vincula el número correcto.');
                 return;
             }
+            const connection = await checkWhatsApp(client);
+            if (stopped) return;
             clearTimeout(startupTimer);
             client.pupBrowser?.on('disconnected', () => { if (!stopped) fail(new Error('Chromium se ha cerrado.')); });
             client.pupPage?.on('error', fail);
             setState('ready');
             unhealthySince = undefined;
-            console.log('Bot listo.');
+            console.log(`Bot listo. WhatsApp Web ${connection.version}; funciones del bot comprobadas.`);
         })().catch(fail));
         client.on('auth_failure', () => fail(new Error('La sesión de WhatsApp no pudo restaurarse. Puede ser necesario vincularla de nuevo.')));
         client.on('disconnected', reason => fail(new Error(`WhatsApp desconectado: ${reason}`)));
@@ -125,12 +135,17 @@ async function run({ clientFactory = clientOptions => new Client(clientOptions) 
             if (stopped || probeBusy || !['ready', 'offline'].includes(status.state)) return;
             probeBusy = true;
             try {
-                const waState = await withTimeout(client.getState(), 10000, 'Estado de WhatsApp');
-                if (waState !== 'CONNECTED' || mongoose.connection.readyState !== 1) throw new Error('WhatsApp o MongoDB desconectado.');
+                await checkWhatsApp(client);
+                if (stopped) return;
+                if (mongoose.connection.readyState !== 1) throw new Error('MongoDB desconectado.');
                 unhealthySince = undefined;
                 setState('ready');
                 await prepareYear();
             } catch (error) {
+                if (isWhatsAppUnavailable(error)) {
+                    fail(error);
+                    return;
+                }
                 unhealthySince ??= Date.now();
                 setState('offline');
                 logError('Comprobación de conexión:', error);
