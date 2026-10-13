@@ -2,7 +2,7 @@ const { rewindAvailability } = require('../src/rewind-date');
 const { getContactInfo } = require('../src/contact');
 const User = require('../models/User');
 const axios = require('axios');
-const { MessageMedia } = require('whatsapp-web.js');
+const { MessageMedia } = require('../src/media');
 const moment = require('moment-timezone');
 const config = require('../config');
 
@@ -93,6 +93,7 @@ module.exports = {
             });
 
         } catch (error) {
+            if (client.durable) throw error;
             console.error('Error al ejecutar el comando /rewindchart:', error);
             await message.reply('Hubo un error al generar tu gráfica anual. Por favor, intenta nuevamente.');
         }

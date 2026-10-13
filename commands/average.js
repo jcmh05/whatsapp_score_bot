@@ -141,6 +141,7 @@ module.exports = {
             await message.reply(reply);
 
         } catch (error) {
+            if (client.durable) throw error;
             console.error('Error al calcular el promedio:', error);
             await message.reply('Hubo un error al calcular tu promedio.');
         }

@@ -230,6 +230,7 @@ module.exports = {
             }
 
         } catch (error) {
+            if (client.durable) throw error;
             if (config.SHOW_LOGS) {
                 console.error('Error al ejecutar el comando /rewind:', error);
             }

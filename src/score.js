@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const MessageReceipt = require('../models/MessageReceipt');
 const { scorePeriod } = require('./time');
+const { permanentError } = require('./errors');
 
 function applyScore(user, body, period, isNew = false) {
     const numeric = /^\d+$/.test(body);
@@ -9,7 +10,7 @@ function applyScore(user, body, period, isNew = false) {
     let congratulations = false;
     if (numeric) {
         score = Number(body);
-        if (!Number.isSafeInteger(score)) throw new Error('El número supera el límite permitido.');
+        if (!Number.isSafeInteger(score)) throw permanentError('El número supera el límite permitido.');
     } else if (body === '+1') {
         score++;
         user.hours.set(period.hourKey, (user.hours.get(period.hourKey) || 0) + 1);
@@ -22,8 +23,10 @@ function applyScore(user, body, period, isNew = false) {
     } else {
         throw new Error('Mensaje de puntuación inválido.');
     }
+    if (!Number.isSafeInteger(score)) throw permanentError('El puntaje supera el límite permitido.');
     user.monthlyScores.set(period.month, score);
     user.totalScore = [...user.monthlyScores.values()].reduce((a, b) => a + b, 0);
+    if (!Number.isSafeInteger(user.totalScore)) throw permanentError('El total anual supera el límite permitido.');
     if ((isNew && numeric && score >= 50 && score % 50 === 0) ||
         (user.totalScore >= user.lastCongratulated + 50 && user.totalScore % 50 === 0)) {
         congratulations = true;
@@ -32,13 +35,13 @@ function applyScore(user, body, period, isNew = false) {
     return { score, congratulations, newNumeric: isNew && numeric };
 }
 
-async function recordScore({ id, name, body, messageId, date }) {
+async function recordScore({ id, name, body, messageId, date, session: outerSession }) {
     if (!messageId) throw new Error('Mensaje sin identificador; no se ha actualizado el contador.');
     const period = scorePeriod(date);
-    const session = await mongoose.startSession();
+    const session = outerSession || await mongoose.startSession();
     let result;
     try {
-        await session.withTransaction(async () => {
+        const update = async () => {
             result = null;
             if (await MessageReceipt.exists({ _id: messageId }).session(session)) {
                 result = { duplicate: true };
@@ -49,17 +52,19 @@ async function recordScore({ id, name, body, messageId, date }) {
             if (!user) user = new User({ _id: id, displayName: name, scoreYear: period.year,
                 monthlyScores: {}, hours: {}, week: {} });
             if (user.scoreYear !== period.year) {
-                throw new Error('El año de los datos no coincide con el mensaje. Revisa el archivo anual antes de continuar.');
+                throw permanentError('El año de los datos no coincide con el mensaje. Revisa el archivo anual antes de continuar.');
             }
             if (name !== 'Usuario') user.displayName = name;
             const change = applyScore(user, body, period, isNew);
             await user.save({ session });
             await MessageReceipt.create([{ _id: messageId }], { session });
             result = { ...change, user };
-        });
+        };
+        if (outerSession) await update();
+        else await session.withTransaction(update);
         return result;
     } finally {
-        await session.endSession();
+        if (!outerSession) await session.endSession();
     }
 }
 

@@ -1,31 +1,19 @@
-// Transporte simulado para probar el proceso real, sin conectar con WhatsApp.
-const { EventEmitter } = require('node:events');
 const { run } = require('../../src/runtime');
-class FakeClient extends EventEmitter {
-    constructor(options) {
-        super();
-        this.options = options;
-        this.info = { wid: { user: process.env.BOT_PHONE, _serialized: `${process.env.BOT_PHONE}@c.us` } };
-        this.pupBrowser = new EventEmitter();
-        this.pupPage = new EventEmitter();
-        this.pupPage.evaluate = async () => ({ state: 'CONNECTED', bridge: true, version: 'runtime-fixture' });
-    }
-    async initialize() {
-        await this.options.authStrategy.afterBrowserInitialized();
-        this.emit('qr', 'integration-test');
-        process.on('message', message => {
-            if (message?.type === 'authenticate') { this.emit('authenticated'); this.emit('ready'); }
-            if (message?.type === 'browser_crash') this.pupBrowser.emit('disconnected');
-            if (message?.type === 'page_crash_before_auth') this.pupPage.emit('error', new Error('Page crashed!'));
-            if (message?.type === 'bridge_lost') {
-                this.pupPage.evaluate = async () => ({ state: 'CONNECTED', bridge: false });
-                this.emit('message', { body: '+1', from: 'fixture@g.us', author: '34123456789@c.us', type: 'chat',
-                    reply: async () => { throw new Error('No se debe responder desde un bridge roto.'); } });
-            }
-            if (message?.type === 'hang') { while (true) {} }
-        });
-    }
-    async getState() { return 'CONNECTED'; }
-    async destroy() {}
-}
-run({ clientFactory: options => new FakeClient(options) });
+const { FakeSocket } = require('./socket.cjs');
+let socket;
+process.on('message', message => {
+    if (message?.type === 'authenticate') socket?.open();
+    if (message?.type === 'disconnect') socket?.disconnect();
+    if (message?.type === 'fatal') throw new Error('Fallo simulado del proceso.');
+    if (message?.type === 'hang') { while (true) {} }
+    if (message?.type === 'incoming' && socket?.ws.isOpen) socket.ev.emit('messages.upsert', {
+        type: 'notify', messages: [{ key: { id: message.id, remoteJid: 'fixture@g.us', participant: '34123456789@s.whatsapp.net' },
+            messageTimestamp: Math.floor(Date.now() / 1000), pushName: 'Test', message: { conversation: message.body } }]
+    });
+});
+run({ timings: { heartbeatMs: 100, maintenanceMs: 500, queueMs: 50, standbyMs: 100 },
+    socketFactory: config => {
+        socket = new FakeSocket(config, process.env.BOT_PHONE);
+        setImmediate(() => socket.ev.emit('connection.update', { qr: 'integration-test' }));
+        return socket;
+    } });

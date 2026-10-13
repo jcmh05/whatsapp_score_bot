@@ -3,7 +3,7 @@ const { fork, spawnSync } = require('node:child_process');
 const path = require('node:path');
 
 function killWorker(child) {
-    // Cerrar también Chromium si Node está bloqueado: no dejar un perfil ocupado al reiniciar.
+    // Si Node se bloquea, cerrar todo el árbol antes de arrancar el sustituto.
     if (Number.isInteger(child.pid)) {
         if (process.platform === 'win32') {
             spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });

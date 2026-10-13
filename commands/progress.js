@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const moment = require('moment');
 const axios = require('axios');
-const { MessageMedia } = require('whatsapp-web.js');
+const { MessageMedia } = require('../src/media');
 
 module.exports = {
     match: /^\/progress$/i,
@@ -82,6 +82,7 @@ module.exports = {
             });
 
         } catch (error) {
+            if (client.durable) throw error;
             console.error('Error al generar la gráfica de progreso:', error);
             await message.reply('Hubo un error al generar la gráfica de progreso. Por favor, inténtalo nuevamente más tarde.');
         }

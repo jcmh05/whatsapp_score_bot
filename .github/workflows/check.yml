@@ -8,8 +8,6 @@ jobs:
     strategy:
       matrix:
         node: [22, 24]
-    env:
-      PUPPETEER_SKIP_DOWNLOAD: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,11 +17,36 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - run: npm run check:transport
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: docker run -d --name mongo -p 27017:27017 mongo:8 --replSet rs0 --bind_ip_all
+      - run: |
+          for i in {1..30}; do
+            docker exec mongo mongosh --quiet --eval 'db.adminCommand({ping:1})' && break
+            sleep 1
+          done
+          docker exec mongo mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"localhost:27017"}]})'
+          for i in {1..30}; do
+            docker exec mongo mongosh --quiet --eval 'if(!db.hello().isWritablePrimary) quit(1)' && break
+            sleep 1
+          done
+      - run: npm run test:integration
+        env:
+          MONGODB_URI: mongodb://localhost:27017/test?replicaSet=rs0
   container:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t bot-whatsapp:check .
-      # Check the final image again with the standard 64 MiB shared memory limit.
-      - run: docker run --rm --memory=512m --shm-size=64m bot-whatsapp:check node scripts/check-browser.js
+      - run: docker run --rm --memory=256m bot-whatsapp:check node scripts/check-transport.js
+      - run: docker run --rm --memory=256m bot-whatsapp:check node --test --test-concurrency=1 test/*.test.js

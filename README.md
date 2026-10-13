@@ -1,25 +1,31 @@
-# Bot de WhatsApp
+# Bot de WhatsApp v2
 
-Contadores mensuales, ranking anual, felicitaciones cada 50 puntos y estadísticas. Los comandos conservan sus nombres y reglas anteriores.
+Contadores mensuales, rankings, felicitaciones cada 50 puntos y estadísticas. Conserva las 21 entradas de comandos y los datos importados. Se conecta con **Baileys por WebSocket**, con sesión y colas en MongoDB.
 
-## Probar en local
+## Migración desde la versión con Chrome
 
-Necesitas Node.js 22.12 o posterior de la rama 22, o Node.js 24, y una cuenta de WhatsApp activa. MongoDB debe admitir transacciones: Atlas o un replica set local.
+El log de Railway confirmó falta de memoria: el contenedor alcanzó 954 MiB, el kernel incrementó `oom_kill` y mató Chrome con señal 9. Esta versión elimina Chromium, Puppeteer, los parches de WhatsApp Web y las sesiones ZIP.
 
-Desde PowerShell, en la carpeta del repo:
+1. Despliega este commit con el Dockerfile. Para el primer cambio de arquitectura, termina la instancia antigua antes de vincular la nueva.
+2. Conserva `MONGODB_URI`, `ADMIN`, `BOT_PHONE`, `SESSION_ID`, `PORT` y `TIMEZONE`. Las variables antiguas `AUTH_STRATEGY`, `REMOTE_BACKUP_MS`, `AUTH_DATA_PATH` y `PUPPETEER_*` se ignoran y pueden retirarse.
+3. **Vincula una vez con el QR nuevo**, desde el WhatsApp del número del bot: Dispositivos vinculados > Vincular un dispositivo. La sesión de Chrome tiene otro formato; sus respaldos se conservan en MongoDB.
+4. Espera `Bot listo. Conexión directa con WhatsApp; sesión en MongoDB.` y prueba `ping`, `/top`, `/mes`, `/year:2025`, `/progress` y un puntaje real.
+5. Reinicia el servicio: debe restaurar la sesión sin otro QR. Solo la revocación de la sesión desde WhatsApp debería exigir otra vinculación.
+
+Los puntajes y los archivos anuales no requieren reimportación. El bot no registra como nuevas cagadas los mensajes del historial sincronizado. La fecha del primer arranque de v2 queda como punto de corte para mensajes antiguos.
+
+## Local
+
+Node.js 22.12 o posterior de la rama 22, o Node.js 24. MongoDB Atlas o un replica set con transacciones. En PowerShell:
 
 ```powershell
 npm.cmd ci
 npm.cmd start
 ```
 
-En una instalación nueva, copia `.env.example` a `.env` y configura `MONGODB_URI`, `ADMIN` (teléfono internacional seguido de `@c.us`) y `BOT_PHONE` (número del bot con prefijo). **El `.env` local de esta recuperación ya está preparado; consérvalo.** `BOT_PHONE` comprueba que la cuenta vinculada sea la correcta; admite espacios, guiones y paréntesis.
+Para una instalación nueva, copia `.env.example` a `.env`. El `.env` de esta recuperación ya está preparado; consérvalo. `ADMIN` es el teléfono internacional seguido de `@c.us`; `BOT_PHONE` es el teléfono del bot con prefijo; `SESSION_ID` debe mantenerse en todos los despliegues. La sesión siempre se guarda en MongoDB, también en local.
 
-Escanea el QR desde **WhatsApp > Dispositivos vinculados > Vincular un dispositivo**, en el teléfono del bot. Al aparecer `Bot listo.`, añade esa cuenta al grupo si aún no está dentro. El número por sí solo no sustituye la vinculación.
-
-Prueba `ping`, `/top`, `/mes`, `/year:2025` dos veces, `/hours`, `/week`, `/noreply` y `/reply`. Para probar una escritura, usa un `+1` real o anota el contador mensual, envía un número de prueba y vuelve a enviar el original. `+1` y `-1` también cambian estadísticas de hora/día; un número solo cambia el mes.
-
-Detén el bot con **Ctrl+C** y vuelve a ejecutar `npm.cmd start`. Una sesión válida guardada debería reconectar sin otro QR.
+Solo una instancia de v2 puede usar el mismo SESSION_ID. Si Railway ya está activo, el proceso local espera en `standby`; detén el servicio remoto para probar localmente. El HTTP se mantiene disponible durante esa espera. Ctrl+C realiza un cierre ordenado.
 
 ## Comandos
 
@@ -27,120 +33,74 @@ Detén el bot con **Ctrl+C** y vuelve a ejecutar `npm.cmd start`. Una sesión v�
 | --- | --- |
 | `21` | Establece el mes en 21; recalcula el total anual |
 | `+1`, `-1` | Suma o resta al mes; registra hora y día; nunca baja de cero |
-| `hola`, `ping` | Responde `hey`, `pong` (ping sin barra) |
+| `hola`, `ping` | Responde hey, pong; ping sin barra |
 | `/top`, `/mes` | Ranking anual y mensual |
-| `/noreply`, `/reply` | Desactiva o activa confirmaciones; las felicitaciones siguen activas |
+| `/noreply`, `/reply` | Controla confirmaciones; mantiene felicitaciones. La preferencia sobrevive al reinicio |
 | `/hours`, `/hourschart` | Horas en texto o imagen |
 | `/week`, `/weekchart` | Días de la semana en texto o imagen |
-| `/average` | Promedio global y mensual |
+| `/average` | Promedios global y mensual |
 | `/progress` | Progreso de meses terminados; requiere dos meses concluidos |
 | `/year:2025` | Ranking y gráficas de un año anterior |
-| `/rewind`, `/rewindchart` | Resumen anual desde el 20 de diciembre a las 00:00 de Madrid; antes muestran la cuenta atrás |
+| `/rewind`, `/rewindchart` | Resumen anual desde el 20 de diciembre, 00:00 de Madrid; antes muestran cuánto queda |
 | `/weather`, `/weather:Jaen` | Tiempo de la ciudad por defecto o la indicada |
 | `/fluky:a,b,c` | Elige una opción al azar |
-| `/fact` | Envía un dato aleatorio y lo elimina, como antes |
-| `/addfact:texto` | Añade un dato; requiere el administrador configurado |
-| `/status`, `/commands` | Estado del sistema y lista de comandos |
+| `/fact` | Envía un dato aleatorio y lo elimina |
+| `/addfact:texto` | Añade un dato; requiere el administrador |
+| `/status`, `/commands` | Estado y lista de comandos |
 
-Los nombres se actualizan con el contacto al registrar puntos, como antes. Los identificadores nuevos de WhatsApp `@lid` se resuelven a `@c.us` para seguir usando los datos importados.
+Los identificadores LID se relacionan con el teléfono para conservar las cuentas históricas `@c.us`. Si no se puede determinar el teléfono, el mensaje queda en la cola para reintentar; nunca se crea otro usuario bajo su LID.
 
-## Recuperación y sesiones
+## Persistencia y recuperación
 
-`npm start` relanza el proceso al fallar, con esperas de 5, 10, 20, 40 y hasta 60 segundos. Tras un minuto conectado se restablece la espera inicial. Detecta también un proceso bloqueado que deja de emitir señales de vida. `npm run start:once` arranca sin supervisor para depurar.
+- `bot_leases`: propiedad exclusiva de una sesión, renovada cada 10 segundos. Expira a los 45 segundos si un proceso muere. Una nueva instancia espera su turno; las escrituras comprueban la propiedad dentro de la transacción.
+- `baileys_auth`: credenciales y claves Signal, con serialización binaria y escrituras confirmadas. Cada revocación crea una generación nueva y conserva el respaldo anterior.
+- `bot_inbox`: comandos y puntajes aceptados, en orden, con deduplicación. Tras procesarlos se conserva el ID y se elimina el texto; los fallidos conservan su contenido para revisión.
+- `bot_outbox`: respuestas, imágenes, citas y reacciones pendientes. Los puntos, la respuesta pendiente y la finalización del trabajo se confirman juntos en MongoDB.
+- `bot_state`: punto de corte, secuencia, generación de autenticación y preferencia de confirmaciones.
 
-Espera a MongoDB antes de iniciar WhatsApp. Una caída de Chromium, desconexión o error no controlado provoca cierre y reinicio. Comprueba WhatsApp/MongoDB cada 30 segundos y reinicia si el problema persiste 90 segundos. La espera del QR no expira; la inicialización después de autenticarse tiene un límite de tres minutos. Descargas y comandos tienen límites de tiempo.
+Una desconexión temporal reconecta el socket con espera progresiva hasta 60 segundos. No reinicia Node ni pierde los trabajos aceptados. Un fallo interno, pérdida de MongoDB o bloqueo del proceso activa el supervisor y el reinicio. La espera del QR no expira; las conexiones, consultas, descargas y trabajos tienen límites de tiempo.
 
-Antes de declarar `Bot listo` y antes de procesar cada comando o puntaje, comprueba que WhatsApp está conectado y que siguen disponibles las funciones de contactos, chats y mensajes. Una página que pierde esas funciones o un navegador que no contesta en diez segundos provoca reinicio para restaurar la sesión. Estos fallos no esperan el margen de 90 segundos reservado a desconexiones temporales.
+La salida conserva el mismo ID al reintentar y espera confirmación del servidor de WhatsApp. Tras ocho intentos, el envío queda como `failed` para revisión. Una entrada que falla tres veces también queda como `failed` y, si las confirmaciones están activas, avisa al remitente. Los fallidos no bloquean los trabajos siguientes. Los envíos confirmados se conservan siete días para las solicitudes de reenvío del SDK.
 
-Los logs `Recursos (inicio/listo/reinicio por error)` indican `containerMiB` (todo el contenedor, incluido Chrome), `limitMiB`, `peakMiB`, `oomKills` y `oomKillsSinceStart`. Los dos últimos son contadores del kernel de procesos terminados por falta de memoria; la diferencia separa las caídas anteriores de las de este arranque. Un valor `null` o métricas no disponibles no significa cero. Se leen los archivos de cgroup v2, no el total de RAM del host. El diagnóstico se registra antes de cargar WhatsApp y captura `Proceso de Chrome caído` con el estado y código nativos de CDP, incluso si todavía no llegó a `ready`. Los errores secundarios del cierre no provocan nuevos reinicios ni ocultan la primera causa.
+El log `Colas fallidas: entrada=N, salida=N` permite detectar trabajos que requieren revisión. Consulta las colecciones por `sessionId`, `state: "failed"` y `lastError`. No borres la deduplicación para corregir un error de entrega: el contador puede estar confirmado aunque no llegue la respuesta.
 
-- `AUTH_STRATEGY=local` (por defecto): sesión en `AUTH_DATA_PATH`; conserva esa carpeta.
-- `AUTH_STRATEGY=remote`: usa `RemoteAuth` y GridFS en MongoDB, con un adaptador compatible con la ruta de ZIP de whatsapp-web.js 1.34. No usa la colección antigua `sessions`. El primer respaldo tarda aproximadamente un minuto después de quedar listo: espera al mensaje de respaldo antes de cerrar. Los siguientes se realizan cada `REMOTE_BACKUP_MS` (por defecto, cinco minutos).
-
-La restauración crea la carpeta local antes de descargar el ZIP de GridFS y espera a que todos sus archivos se hayan descomprimido antes de abrir Chrome. Así puede recuperar la sesión en un contenedor nuevo aunque `.wwebjs_auth` todavía no exista. Las pruebas cubren ese caso con un ZIP real y dos inicializaciones de `RemoteAuth`, además de la descarga desde MongoDB en una base temporal.
-
-Mantén el mismo `SESSION_ID`; si está vacío se deriva de `BOT_PHONE`. Cambiar de estrategia/identificador o revocar la sesión desde el teléfono puede requerir otro QR. No ejecutes dos instancias con la misma sesión al mismo tiempo.
-
-Primero se confirma la escritura en MongoDB; después se envían felicitaciones y confirmaciones. Si falla la respuesta, el contador permanece guardado. Esas respuestas no se reenvían automáticamente. Los identificadores de mensajes se conservan 30 días para evitar duplicados. Se procesan mensajes en orden y se usa su fecha para asignar mes/hora/día.
-
-- `/healthz`: 200 mientras el proceso vive, incluso esperando QR.
-- `/readyz`: 200 solo con WhatsApp y MongoDB conectados; 503 en los demás casos.
-- `/`: estado legible del bot.
+Baileys es una conexión no oficial y WhatsApp puede cambiar su protocolo. La deduplicación protege las escrituras aceptadas en MongoDB; la red externa no permite prometer disponibilidad absoluta ni entrega exactamente una vez. Los límites concretos están en [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Datos y años
 
-`test.users` contiene el año activo identificado por `scoreYear`; `users2024`, `users2025`, etc., los archivos anuales. Se conservan `monthlyScores`, `totalScore`, `lastCongratulated`, `hours` y `week`.
+`test.users` contiene el año activo en `scoreYear`; `users2024`, `users2025`, etc., contienen archivos anuales. Al cambiar de año en Madrid se archiva y se reinicia en una transacción. Un archivo que ya existe, usuarios sin año o una fecha de servidor anterior a los datos requieren revisión; se evita sobrescribir el histórico.
 
-Al cambiar de año en Madrid, archiva y reinicia contadores en una transacción. Si ya hay un archivo del mismo usuario/año, falta `scoreYear` o la fecha del servidor retrocede, se detiene para revisar los datos. Un mensaje de un año ya archivado se rechaza; los históricos se corrigen aparte. Se conserva `MONTH_START_DAY=1`.
+Un mensaje de un año ya archivado se rechaza con una respuesta explícita. Los mensajes del año activo utilizan su fecha original para mes, hora y día. Se mantiene `MONTH_START_DAY=1`.
 
-Los registros de Excel conservan metadatos de origen e incertidumbres. Las horas/días de 2026 quedan vacíos hasta registrar eventos con `+1`/`-1`. Los números no inventan ese detalle. Las estadísticas horarias solo describen eventos con horario registrado.
+Los números solo establecen el mes y recalculan el total. No inventan horas o días que faltan en los datos importados. Sin datos temporales, horas/días y sus gráficas responden: «No tienes registrados datos sobre este año aún, prueba más adelante.»
 
-Cuando no hay horas o días registrados, `/hours`, `/hourschart`, `/week` y `/weekchart` responden «No tienes registrados datos sobre este año aún, prueba más adelante.» y no descargan ni envían una gráfica vacía.
+QuickChart genera los PNG: Chart.js 2 para horas/días y 4 para progreso/año/resumen. Los errores temporales de descarga se reintentan antes de informar del fallo.
 
-## Comprobaciones
+## Railway
+
+La imagen usa Node 24 y dumb-init; no instala navegador. Instala con `npm ci --omit=dev` y ejecuta el supervisor. Mantén las variables actuales y el acceso a Atlas. No necesita disco persistente ni volumen para la sesión.
+
+Si configuras un healthcheck de despliegue, usa **/healthz**: devuelve 200 incluso esperando QR o la lease. **/readyz** devuelve 200 solo con WhatsApp, MongoDB y lease válidos; en los demás casos, 503. **/** muestra el estado legible.
+
+Los logs `Recursos (inicio/listo/periódico/reinicio por error)` informan de RSS de Node y memoria/límite/pico/OOM del contenedor cuando existe cgroup v2. El supervisor no impide que Railway suspenda un servicio por sus reglas o por agotar crédito.
+
+## Verificación
 
 ```powershell
 npm.cmd run check
 npm.cmd test
-# Comprobar Chrome real, sin conectar con WhatsApp ni MongoDB.
-npm.cmd run check:browser
-# Optativo: .env y permisos para crear/borrar una base temporal.
-npm.cmd run test:integration
+npm.cmd run check:transport
 npm.cmd audit --omit=dev
+# Optativa: permisos para crear y borrar únicamente una base temporal.
+npm.cmd run test:integration
+# Optativa: handshake real y QR anónimo; no vincula ninguna cuenta.
+node scripts/check-pairing.js
 ```
 
-Las pruebas unitarias no conectan con WhatsApp ni MongoDB. Las de integración crean una base `bot_check_...`, prueban concurrencia, duplicados, rollback, archivo anual, `/year`, GridFS y recuperación del proceso con WhatsApp simulado, y borran esa base al terminar. No escriben en `test.users`. GitHub Actions comprueba sintaxis y pruebas unitarias en Node 22 y 24.
+Las pruebas de integración crean una base aleatoria `bot_check_...`, verifican transacciones, duplicados, claves binarias, exclusión, colas, comandos y recuperación del proceso con un socket simulado, y eliminan solo esa base. No utilizan la cuenta ni las colecciones de producción. La comprobación de pairing usa otra base temporal y no muestra ni vincula el QR.
 
-Las pruebas de compatibilidad ejecutan las clases `Client` y `Message` y el código inyectado real de whatsapp-web.js, con servicios de WhatsApp simulados. Cubren el identificador nuevo `$1`, respuestas y reacciones, y medios con el campo interno `__x_id`, además de las rutas de comandos y transacciones. La confirmación con la cuenta y el grupo reales se realiza en local. GitHub Actions también construye el contenedor y comprueba Chrome real en su imagen final, con 512 MiB de memoria y 64 MiB de memoria compartida.
+GitHub Actions verifica Node 22/24, integración con MongoDB 8 en replica set y la imagen Linux. Las comprobaciones del transporte y las pruebas unitarias se ejecutan secuencialmente en un contenedor limitado a 256 MiB. Esto verifica dependencias y pruebas controladas, no el consumo de una cuenta real durante días.
 
-`check:browser` también ejecuta `Client.inject` y `LoadUtils` reales sobre una página local de prueba: sesión que ya está sincronizada, inyección concurrente, navegación de un iframe, eventos de sincronización repetidos y recarga del documento principal. Comprueba que se recuperan las funciones del bot y que no se duplica `ready`. No inicia una sesión real ni envía mensajes. La integración comprueba que perder esas funciones reinicia el proceso sin guardar el mensaje que no pudo procesar.
+## Código
 
-También registra una sesión CDP real, comprueba el descubrimiento de páginas y lee los recursos del entorno. La prueba del build no provoca caídas deliberadas de Chrome. La captura de eventos se verifica aparte con el transporte simulado, y la integración comprueba el reinicio tras una caída de página anterior a la autenticación. La causa de las caídas con la cuenta real se determina con sus logs.
-
-### Compatibilidad con WhatsApp Web de 2026
-
-La versión publicada 1.34.7 necesita dos correcciones ya aceptadas en el proyecto original: [identificadores `_serialized`/`$1`](https://github.com/wwebjs/whatsapp-web.js/pull/201832) y [colisión del ID al enviar medios](https://github.com/wwebjs/whatsapp-web.js/pull/201923). La dependencia se fija en esa versión y `patch-package` aplica `patches/whatsapp-web.js+1.34.7.patch` al instalar. El parche conserva los campos de subida y elimina la colisión tanto si el ID interno del medio tiene valor como si es `undefined`. No se ocultan ni se reintentan a ciegas los errores de envío.
-
-`npm ci` o `npm install` debe mostrar que el parche se aplicó. No omitas los scripts de instalación. Al actualizar la librería, revisa si ya incorpora las correcciones y retira o adapta el parche antes de cambiar la versión.
-
-El mismo parche corrige la espera de `RemoteAuth` al descomprimir: el evento `close` de [`unzipper.Extract`](https://github.com/ZJONSSON/node-unzipper#extract-to-a-directory) confirma que los archivos están escritos. El evento `finish` usado por la librería puede llegar antes. La descarga del ZIP crea su carpeta de destino desde `src/session-store.js`.
-
-También incorpora los cambios de recuperación de página de [la corrección de sincronización y reinyección del proyecto original](https://github.com/wwebjs/whatsapp-web.js/pull/201653): ignorar navegaciones de iframes, recuperar las funciones si el documento recarga cuando ya estaba sincronizado y limpiar los listeners anteriores. La inyección se serializa y cada documento se prepara una sola vez; `RemoteAuth` conserva un único intervalo de respaldo aunque se recargue la página. El supervisor recupera los errores de navegación que impiden completar esa preparación.
-
-Revisión de octubre de 2026: dependencias directas actualizadas; Chart.js local eliminado porque las gráficas usan QuickChart. Puppeteer viene con whatsapp-web.js. Se fija `basic-ftp` 6.2.2 para corregir una alerta transitiva.
-
-Las peticiones a QuickChart indican explícitamente la versión que corresponde a cada configuración (2 para horas/días, 4 para año/progreso/resumen) y el formato PNG; así se conservan títulos y ejes.
-
-La auditoría informa de nueve avisos altos, propagados desde dos dependencias sin versión corregida publicada. Cinco proceden de `extract-zip` 2.0.1: [enlaces simbólicos](https://github.com/advisories/GHSA-jmr9-qjv8-65gv) y [escritura fuera del destino](https://github.com/advisories/GHSA-7pqw-9j4j-h8q3). Se usa para instalar Chromium; el bot no extrae ZIP de usuarios. Los otros cuatro proceden de [`braces`, por patrones anidados](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm), a través de `patch-package`; se usa en la instalación con archivos del proyecto, no al procesar mensajes. Ambas limitaciones siguen pendientes de sus dependencias.
-
-## Alojamiento
-
-Instala con `npm ci` y arranca con `npm start`; `Procfile` está actualizado. El servidor debe ejecutar Node y Chromium, mantener el proceso activo y acceder a Atlas. Configura las variables en el proveedor. `PUPPETEER_EXECUTABLE_PATH` permite usar su Chromium; `PUPPETEER_NO_SANDBOX=true` solo cuando lo requiera ese entorno.
-
-Para disco efímero usa sesión remota o volumen persistente. El supervisor recupera fallos mientras el servidor está funcionando; no evita que el proveedor suspenda la instancia o termine el contenedor.
-
-### Railway
-
-Railway detecta el `Dockerfile` del repositorio. La imagen incluye Node 24, las bibliotecas de Linux y la versión de Chrome que descarga el Puppeteer fijado en `package-lock.json`. Chrome se comprueba durante la construcción; si no puede abrir una página, la construcción falla. El contexto excluye `.env`, credenciales y sesiones locales mediante `.dockerignore`.
-
-Configura `MONGODB_URI`, `ADMIN`, `BOT_PHONE`, `SESSION_ID` y `PORT=3000` con los valores del servicio. Usa `AUTH_STRATEGY=remote` para conservar la sesión en MongoDB; una variable de Railway con valor `local` prevalece sobre el valor de la imagen. Conserva el mismo `SESSION_ID` en futuros despliegues. El primer arranque con sesión remota puede requerir un QR nuevo; espera al mensaje «Sesión de WhatsApp respaldada en MongoDB» antes de reiniciar.
-
-La imagen establece `PUPPETEER_NO_SANDBOX=true` para este contenedor y `PUPPETEER_DUMPIO=true` para incluir el error real de Chrome en los logs. En Linux se añade `--disable-dev-shm-usage` para no depender de la pequeña memoria compartida del contenedor. Las opciones locales conservan sus valores del `.env`.
-
-Para comprobar RAM en Railway, abre el servicio y entra en [Metrics](https://docs.railway.com/observability/metrics), en la gráfica Memory. El límite se configura en [Settings > Deploy > Replica Limits](https://docs.railway.com/pricing/cost-control). `Page crashed!` confirma la pérdida del renderer, pero los avisos de GPU o `DEPRECATED_ENDPOINT` no identifican por sí solos el motivo. Usa los contadores OOM y el estado nativo de Chrome antes de cambiar recursos o parámetros gráficos. Las pruebas del contenedor con páginas de prueba no equivalen al consumo de la cuenta real con WhatsApp cargado.
-
-Si cambias del constructor automático al Dockerfile, despliega el último commit de `main`. No basta con reiniciar el contenedor antiguo. No hace falta configurar una ruta manual a Chromium ni añadir un comando de construcción en Railway. El arranque por defecto de la imagen usa el supervisor; si el servicio ya tiene `npm start` como comando personalizado, también funciona.
-
-Si configuras un healthcheck de despliegue, usa `/healthz`: funciona mientras esperas el QR. `/readyz` solo devuelve 200 después de vincular WhatsApp y conectar MongoDB. Estos endpoints no sustituyen la comprobación real del navegador durante la construcción.
-
-## Estructura
-
-- `index.js`: entorno y entrada.
-- `src/runtime.js`: MongoDB, WhatsApp, HTTP y cierre.
-- `src/supervisor.js`: reinicios y detección de bloqueos.
-- `src/handler.js`: cola, comandos y confirmaciones.
-- `src/score.js`, `src/year.js`: escrituras y archivo anual.
-- `src/contact.js`: identificación de usuarios.
-- `src/session-store.js`: respaldo remoto.
-- `commands/`: comandos existentes.
-- `models/`: usuarios, datos curiosos y mensajes procesados.
+`src/runtime.js` coordina proceso, HTTP y MongoDB. `connection.js` controla el socket; `auth-store.js` conserva las claves; `jobs.js` procesa la entrada; `outbox.js` entrega respuestas. `handler.js`, `score.js`, `year.js` y `commands/` mantienen las reglas del bot. `supervisor.js` recupera fallos del proceso. El diseño y sus límites se describen en [ARCHITECTURE.md](ARCHITECTURE.md).

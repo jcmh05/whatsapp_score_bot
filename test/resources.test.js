@@ -1,8 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { readResources, resourceReporter } = require('../src/resources');
-const { EventEmitter } = require('node:events');
-const { watchBrowser } = require('../src/browser-diagnostics');
+
+
 
 test('lee el consumo total del contenedor, su límite y los contadores de OOM, no solo la RAM de Node', async () => {
     const files = { 'memory.current': String(480 * 1024 * 1024), 'memory.max': String(512 * 1024 * 1024),
@@ -27,25 +27,4 @@ test('distingue un OOM de este arranque de los procesos que Linux mató antes', 
     await report('inicio'); oomKills = 4; await report('caída');
     assert(logs[0].includes('"oomKillsSinceStart":0'));
     assert(logs[1].includes('"oomKillsSinceStart":1'));
-});
-
-test('el diagnóstico captura caídas antes de ready y el motivo nativo sin publicar datos de la página', async () => {
-    const page = new EventEmitter(), browser = new EventEmitter(), session = new EventEmitter();
-    const requests = [], failures = [], logs = [], reports = [];
-    let stopping = false;
-    session.send = async (name, options) => { requests.push([name, options]); };
-    browser.target = () => ({ createCDPSession: async () => session });
-    await watchBrowser({ pupBrowser: browser, pupPage: page }, { fail: error => failures.push(error),
-        reportResources: async label => { reports.push(label); }, logger: { error: value => logs.push(value) },
-        isStopping: () => stopping });
-    assert.deepEqual(requests, [['Target.setDiscoverTargets', { discover: true }]]);
-    page.emit('error', new Error('Page crashed!'));
-    session.emit('Target.targetCrashed', { status: 'oom', errorCode: 137, targetId: 'private-target', url: 'private-url' });
-    assert.equal(failures[0].message, 'Page crashed!');
-    assert.deepEqual(reports, ['Chrome caído']);
-    assert(logs[0].includes('"status":"oom"')); assert(logs[0].includes('137'));
-    assert(!logs[0].includes('private'));
-    stopping = true;
-    browser.emit('disconnected'); page.emit('error', new Error('Target closed'));
-    assert.equal(failures.length, 1, 'El cierre no debe provocar un segundo fallo.');
 });

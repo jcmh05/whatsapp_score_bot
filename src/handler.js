@@ -12,13 +12,15 @@ const commands = fs.readdirSync(path.join(__dirname, '..', 'commands'))
 
 function createHandler({ beforeMessage = async () => {}, record = recordScore,
     identify = getContactInfo, commandList = commands, extra = generateRandomCongratsExtra,
-    logger = console, onUnavailable = () => false } = {}) {
-    let shouldReply = true;
+    logger = console, onUnavailable = () => false, strict = false, initialShouldReply = true,
+    onReplySetting = () => {} } = {}) {
+    let shouldReply = initialShouldReply;
     const enqueue = createQueue();
-    const context = { setShouldReply: value => { shouldReply = value; }, getShouldReply: () => shouldReply };
+    const context = { setShouldReply: value => { shouldReply = value; onReplySetting(value); }, getShouldReply: () => shouldReply };
     async function safely(action) {
         try { await withTimeout(action(), 15000, 'Respuesta de WhatsApp'); }
         catch (error) {
+            if (strict) throw error;
             logger.error('Error enviando respuesta:', error);
             onUnavailable(error);
         }
@@ -33,7 +35,8 @@ function createHandler({ beforeMessage = async () => {}, record = recordScore,
         try {
             await beforeMessage();
             if (command) {
-                await withTimeout(command.callback(client, message, context), 60000, 'Ejecución del comando');
+                if (strict) await command.callback(client, message, context);
+                else await withTimeout(command.callback(client, message, context), 60000, 'Ejecución del comando');
                 return;
             }
             const contact = await withTimeout(identify(client, message), 15000, 'Identificación del remitente');
@@ -57,6 +60,7 @@ function createHandler({ beforeMessage = async () => {}, record = recordScore,
                 await safely(() => /^\d+$/.test(body) ? message.react('✅') : message.reply(`${result.score}✅`));
             }
         } catch (error) {
+            if (strict) throw error;
             logger.error('Error procesando mensaje:', error);
             if (onUnavailable(error)) return;
             if (shouldReply) await safely(() => message.reply(command ? 'Hubo un error al ejecutar el comando.' :

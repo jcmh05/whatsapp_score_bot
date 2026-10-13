@@ -41,6 +41,7 @@ module.exports = {
 
             await message.reply(reply);
         } catch (error) {
+            if (client.durable) throw error;
             console.error('Error al obtener el top mensual:', error);
             await message.reply('Hubo un error al obtener el top del mes.');
         }

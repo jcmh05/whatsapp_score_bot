@@ -127,6 +127,7 @@ module.exports = {
             await message.reply(reply);
             log('Respuesta enviada correctamente.');
         } catch (error) {
+            if (client.durable) throw error;
             console.error('Error al procesar el comando /weather:', error);
             await message.reply('Hubo un error al obtener la información del clima. Por favor, intenta nuevamente más tarde.');
         }

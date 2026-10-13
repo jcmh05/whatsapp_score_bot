@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const axios = require('axios');
-const { MessageMedia } = require('whatsapp-web.js');
+const { MessageMedia } = require('../src/media');
 const moment = require('moment');
 
 module.exports = {
@@ -185,6 +185,7 @@ module.exports = {
             });
 
         } catch (error) {
+            if (client.durable) throw error;
             console.error('Error al ejecutar el comando /year:', error);
             await message.reply('Hubo un error al obtener los datos del año solicitado. Por favor, intenta nuevamente.');
         }

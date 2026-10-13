@@ -7,6 +7,7 @@ const { promisify } = require('node:util');
 const execute = promisify(execFile);
 const path = require('node:path');
 const config = require('../config');
+const { readResources } = require('../src/resources');
 
 // Función de registro condicional
 const log = (...args) => {
@@ -21,6 +22,10 @@ module.exports = {
         try {
             // Obtener información básica sobre el bot y el entorno de ejecución
             const uptime = moment.duration(process.uptime(), 'seconds').humanize();
+            const resources = await readResources();
+            const totalBytes = resources.limitMiB ? resources.limitMiB * 1048576 : os.totalmem();
+            const freeBytes = resources.limitMiB && resources.containerMiB !== null ?
+                Math.max(0, resources.limitMiB - resources.containerMiB) * 1048576 : os.freemem();
             let npmVersion = 'Desconocida';
             try {
                 const npm = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
@@ -30,8 +35,8 @@ module.exports = {
                 platform: os.platform(),
                 arch: os.arch(),
                 cpu: os.cpus()[0]?.model || 'Desconocida',
-                memory: `${(os.totalmem() / 1024 / 1024 / 1024).toFixed(2)} GB`,
-                freeMemory: `${(os.freemem() / 1024 / 1024 / 1024).toFixed(2)} GB`,
+                memory: `${(totalBytes / 1024 / 1024 / 1024).toFixed(2)} GB`,
+                freeMemory: `${(freeBytes / 1024 / 1024 / 1024).toFixed(2)} GB`,
                 uptime: uptime,
                 nodeVersion: process.version,
                 npmVersion: npmVersion,
@@ -56,6 +61,7 @@ module.exports = {
                 const result = await mongoose.connection.db.admin().serverInfo();
                 mongoVersion = result.version;
             } catch (error) {
+                if (client.durable) throw error;
                 console.error('Error al obtener la versión de MongoDB:', error);
             }
 
@@ -87,6 +93,7 @@ module.exports = {
             // Enviar la respuesta con la información del estado
             await message.reply(reply);
         } catch (error) {
+            if (client.durable) throw error;
             console.error('Error al obtener el estado del bot:', error);
             await message.reply('Hubo un error al obtener el estado del bot. Por favor, inténtalo más tarde.');
         }

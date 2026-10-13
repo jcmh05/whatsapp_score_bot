@@ -55,6 +55,7 @@ module.exports = {
 
             await message.reply('Dato añadido ✅');
         } catch (error) {
+            if (client.durable) throw error;
             log(`Error al añadir un dato. SenderId: ${message.from || 'indefinido'}. Error: ${error.message}`);
             console.error('Error al añadir un dato:', error);
             await message.reply('Error al añadir el dato ❌. Por favor, intenta nuevamente.');

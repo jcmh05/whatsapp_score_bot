@@ -2,7 +2,7 @@ const { NO_TEMPORAL_DATA, hasRecordedValues } = require('../src/statistics');
 const { getContactInfo } = require('../src/contact');
 const User = require('../models/User');
 const axios = require('axios');
-const { MessageMedia } = require('whatsapp-web.js');
+const { MessageMedia } = require('../src/media');
 const config = require('../config');
 
 module.exports = {
@@ -104,6 +104,7 @@ module.exports = {
             }
 
         } catch (error) {
+            if (client.durable) throw error;
             if (config.SHOW_LOGS) {
                 console.error('Error al generar y enviar la gráfica de días:', error);
             }

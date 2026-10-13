@@ -20,6 +20,7 @@ module.exports = {
             // Eliminar el hecho de la base de datos
             await Fact.deleteOne({ _id: fact[0]._id });
         } catch (error) {
+            if (client.durable) throw error;
             console.error('Error al obtener un hecho:', error);
             await message.reply('Hubo un error al obtener un hecho. Por favor, intenta nuevamente.');
         }

@@ -44,6 +44,7 @@ module.exports = {
 
             await message.reply(reply);
         } catch (error) {
+            if (client.durable) throw error;
             console.error('Error al generar la gráfica con emojis:', error);
             await message.reply('Hubo un error al generar tu gráfica de días.');
         }
