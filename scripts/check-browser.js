@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const puppeteer = require('puppeteer');
 const { browserOptions } = require('../src/browser');
 const { checkWhatsAppLifecycle } = require('./check-whatsapp-lifecycle');
+const { checkBrowserDiagnostics } = require('./check-browser-diagnostics');
 
 async function checkBrowser() {
     const browser = await puppeteer.launch(browserOptions({
@@ -16,6 +17,7 @@ async function checkBrowser() {
         console.log(`Chrome comprobado: ${await browser.version()}`);
         await page.close();
         await checkWhatsAppLifecycle(browser);
+        await checkBrowserDiagnostics(browser);
     } finally {
         await browser.close();
     }

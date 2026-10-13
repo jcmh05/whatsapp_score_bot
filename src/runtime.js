@@ -11,6 +11,8 @@ const { MongoSessionStore } = require('./session-store');
 const { withTimeout } = require('./timeout');
 const { browserOptions } = require('./browser');
 const { checkWhatsApp, isWhatsAppUnavailable } = require('./whatsapp-health');
+const { resourceReporter } = require('./resources');
+const { watchBrowser } = require('./browser-diagnostics');
 
 function safeError(error) {
     return String(error?.stack || error).replace(/mongodb(?:\+srv)?:\/\/[^\s"']+/g, '<MongoDB URI omitida>');
@@ -28,6 +30,8 @@ async function run({ clientFactory = clientOptions => new Client(clientOptions) 
     const startedAt = Date.now();
     const logError = (...args) => console.error(...args.map(safeError));
     const logger = { error: logError };
+    const reportResources = resourceReporter({ logger: { log: console.log, error: logError } });
+    let watchedPage;
     const sendHeartbeat = () => {
         if (process.connected) process.send({ type: 'heartbeat', state: status.state, ready: status.ready }, () => {});
     };
@@ -41,6 +45,7 @@ async function run({ clientFactory = clientOptions => new Client(clientOptions) 
         clearInterval(heartbeat); clearInterval(watchdog); clearTimeout(startupTimer);
         const deadline = setTimeout(() => process.exit(code), 12000);
         try {
+            if (code !== 0) await reportResources('reinicio por error');
             if (client) await withTimeout(client.destroy(), 8000, 'Cierre de WhatsApp');
             await mongoose.disconnect();
             if (server) await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
@@ -48,7 +53,16 @@ async function run({ clientFactory = clientOptions => new Client(clientOptions) 
         clearTimeout(deadline);
         process.exit(code);
     }
-    const fail = error => { logError(error); void stop(1, 'Se reiniciará el bot para recuperar la conexión.'); };
+    const fail = error => {
+        if (stopped) return;
+        logError(error);
+        void stop(1, 'Se reiniciará el bot para recuperar la conexión.');
+    };
+    async function observeBrowser() {
+        if (!client?.pupPage || watchedPage === client.pupPage) return;
+        watchedPage = client.pupPage;
+        await watchBrowser(client, { fail, reportResources, logger: { error: logError }, isStopping: () => stopped });
+    }
     process.on('SIGINT', () => void stop(0, 'Bot detenido.'));
     process.on('SIGTERM', () => void stop(0, 'Bot detenido.'));
     process.on('message', message => { if (message?.type === 'shutdown') void stop(0, 'Bot detenido.'); });
@@ -79,6 +93,9 @@ async function run({ clientFactory = clientOptions => new Client(clientOptions) 
         startupTimer = setTimeout(() => fail(new Error('WhatsApp no terminó de inicializarse en tres minutos.')), 180000);
     }
     try {
+        const revision = process.env.RAILWAY_GIT_COMMIT_SHA;
+        if (/^[a-f0-9]{7,40}$/i.test(revision || '')) console.log(`Revisión del bot: ${revision.slice(0, 7)}`);
+        await reportResources('inicio');
         await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 15000, connectTimeoutMS: 15000,
             socketTimeoutMS: 30000, maxPoolSize: 10 });
         console.log('MongoDB conectado.');
@@ -88,6 +105,11 @@ async function run({ clientFactory = clientOptions => new Client(clientOptions) 
         const authStrategy = options.authStrategy === 'local' ? new LocalAuth(authOptions) : new RemoteAuth({
             ...authOptions, store: new MongoSessionStore({ mongoose, dataPath: options.dataPath }), backupSyncIntervalMs: options.backupMs
         });
+        const afterBrowserInitialized = authStrategy.afterBrowserInitialized.bind(authStrategy);
+        authStrategy.afterBrowserInitialized = async () => {
+            await afterBrowserInitialized();
+            await observeBrowser();
+        };
         client = clientFactory({ authStrategy, puppeteer: browserOptions(options) });
         const handler = createHandler({ beforeMessage: async () => {
             await checkWhatsApp(client);
@@ -109,6 +131,7 @@ async function run({ clientFactory = clientOptions => new Client(clientOptions) 
         client.on('authenticated', () => { setState('authenticated'); armStartupTimeout(); });
         client.on('remote_session_saved', () => console.log('Sesión de WhatsApp respaldada en MongoDB.'));
         client.on('ready', () => void (async () => {
+            await observeBrowser();
             const wid = client.info?.wid;
             let phone = wid?.user;
             if (wid?._serialized?.endsWith('@lid')) {
@@ -122,11 +145,10 @@ async function run({ clientFactory = clientOptions => new Client(clientOptions) 
             const connection = await checkWhatsApp(client);
             if (stopped) return;
             clearTimeout(startupTimer);
-            client.pupBrowser?.on('disconnected', () => { if (!stopped) fail(new Error('Chromium se ha cerrado.')); });
-            client.pupPage?.on('error', fail);
             setState('ready');
             unhealthySince = undefined;
             console.log(`Bot listo. WhatsApp Web ${connection.version}; funciones del bot comprobadas.`);
+            await reportResources('listo');
         })().catch(fail));
         client.on('auth_failure', () => fail(new Error('La sesión de WhatsApp no pudo restaurarse. Puede ser necesario vincularla de nuevo.')));
         client.on('disconnected', reason => fail(new Error(`WhatsApp desconectado: ${reason}`)));

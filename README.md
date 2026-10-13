@@ -52,6 +52,8 @@ Espera a MongoDB antes de iniciar WhatsApp. Una caída de Chromium, desconexión
 
 Antes de declarar `Bot listo` y antes de procesar cada comando o puntaje, comprueba que WhatsApp está conectado y que siguen disponibles las funciones de contactos, chats y mensajes. Una página que pierde esas funciones o un navegador que no contesta en diez segundos provoca reinicio para restaurar la sesión. Estos fallos no esperan el margen de 90 segundos reservado a desconexiones temporales.
 
+Los logs `Recursos (inicio/listo/reinicio por error)` indican `containerMiB` (todo el contenedor, incluido Chrome), `limitMiB`, `peakMiB`, `oomKills` y `oomKillsSinceStart`. Los dos últimos son contadores del kernel de procesos terminados por falta de memoria; la diferencia separa las caídas anteriores de las de este arranque. Un valor `null` o métricas no disponibles no significa cero. Se leen los archivos de cgroup v2, no el total de RAM del host. El diagnóstico se registra antes de cargar WhatsApp y captura `Proceso de Chrome caído` con el estado y código nativos de CDP, incluso si todavía no llegó a `ready`. Los errores secundarios del cierre no provocan nuevos reinicios ni ocultan la primera causa.
+
 - `AUTH_STRATEGY=local` (por defecto): sesión en `AUTH_DATA_PATH`; conserva esa carpeta.
 - `AUTH_STRATEGY=remote`: usa `RemoteAuth` y GridFS en MongoDB, con un adaptador compatible con la ruta de ZIP de whatsapp-web.js 1.34. No usa la colección antigua `sessions`. El primer respaldo tarda aproximadamente un minuto después de quedar listo: espera al mensaje de respaldo antes de cerrar. Los siguientes se realizan cada `REMOTE_BACKUP_MS` (por defecto, cinco minutos).
 
@@ -93,6 +95,8 @@ Las pruebas de compatibilidad ejecutan las clases `Client` y `Message` y el cód
 
 `check:browser` también ejecuta `Client.inject` y `LoadUtils` reales sobre una página local de prueba: sesión que ya está sincronizada, inyección concurrente, navegación de un iframe, eventos de sincronización repetidos y recarga del documento principal. Comprueba que se recuperan las funciones del bot y que no se duplica `ready`. No inicia una sesión real ni envía mensajes. La integración comprueba que perder esas funciones reinicia el proceso sin guardar el mensaje que no pudo procesar.
 
+También provoca una caída controlada de una página vacía con CDP y comprueba que llegan el evento nativo de terminación y el diagnóstico de recursos. Esto valida la captura del fallo; no reproduce ni atribuye la causa de una caída con la cuenta real.
+
 ### Compatibilidad con WhatsApp Web de 2026
 
 La versión publicada 1.34.7 necesita dos correcciones ya aceptadas en el proyecto original: [identificadores `_serialized`/`$1`](https://github.com/wwebjs/whatsapp-web.js/pull/201832) y [colisión del ID al enviar medios](https://github.com/wwebjs/whatsapp-web.js/pull/201923). La dependencia se fija en esa versión y `patch-package` aplica `patches/whatsapp-web.js+1.34.7.patch` al instalar. El parche conserva los campos de subida y elimina la colisión tanto si el ID interno del medio tiene valor como si es `undefined`. No se ocultan ni se reintentan a ciegas los errores de envío.
@@ -122,6 +126,8 @@ Railway detecta el `Dockerfile` del repositorio. La imagen incluye Node 24, las 
 Configura `MONGODB_URI`, `ADMIN`, `BOT_PHONE`, `SESSION_ID` y `PORT=3000` con los valores del servicio. Usa `AUTH_STRATEGY=remote` para conservar la sesión en MongoDB; una variable de Railway con valor `local` prevalece sobre el valor de la imagen. Conserva el mismo `SESSION_ID` en futuros despliegues. El primer arranque con sesión remota puede requerir un QR nuevo; espera al mensaje «Sesión de WhatsApp respaldada en MongoDB» antes de reiniciar.
 
 La imagen establece `PUPPETEER_NO_SANDBOX=true` para este contenedor y `PUPPETEER_DUMPIO=true` para incluir el error real de Chrome en los logs. En Linux se añade `--disable-dev-shm-usage` para no depender de la pequeña memoria compartida del contenedor. Las opciones locales conservan sus valores del `.env`.
+
+Para comprobar RAM en Railway, abre el servicio y entra en [Metrics](https://docs.railway.com/observability/metrics), en la gráfica Memory. El límite se configura en [Settings > Deploy > Replica Limits](https://docs.railway.com/pricing/cost-control). `Page crashed!` confirma la pérdida del renderer, pero los avisos de GPU o `DEPRECATED_ENDPOINT` no identifican por sí solos el motivo. Usa los contadores OOM y el estado nativo de Chrome antes de cambiar recursos o parámetros gráficos. Las pruebas del contenedor con páginas de prueba no equivalen al consumo de la cuenta real con WhatsApp cargado.
 
 Si cambias del constructor automático al Dockerfile, despliega el último commit de `main`. No basta con reiniciar el contenedor antiguo. No hace falta configurar una ruta manual a Chromium ni añadir un comando de construcción en Railway. El arranque por defecto de la imagen usa el supervisor; si el servicio ya tiene `npm start` como comando personalizado, también funciona.
 
